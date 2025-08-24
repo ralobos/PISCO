@@ -114,24 +114,24 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     p = inputParser;
 
-    addRequired(p, 'kCal', @(x) validateattributes(x, {'numeric'}, {'3d'}));
-    addRequired(p, 'dim_sens', @(x) validateattributes(x, {'numeric'}, {'vector'}));
+    addRequired(p, 'kCal', @(x) isnumeric(x) && ndims(x) == 3);
+    addRequired(p, 'dim_sens', @(x) isnumeric(x) && isvector(x) && length(x) == 2);
 
-    addParameter(p, 'tau', 3, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'threshold', 0.05, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'kernel_shape', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'FFT_nullspace_C_calculation', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'PowerIteration_G_nullspace_vectors', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'M', 30, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'PowerIteration_flag_convergence', 1, @(x) isnumeric(x));
-    addParameter(p, 'PowerIteration_flag_auto', 0, @(x) isnumeric(x));
-    addParameter(p, 'FFT_interpolation', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'interp_zp', 24, @(x) isnumeric(x));
-    addParameter(p, 'gauss_win_param', 100, @(x) isnumeric(x));
-    addParameter(p, 'sketched_SVD', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'sketch_dim', 500, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'visualize_C_matrix_sv', 0, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-    addParameter(p, 'verbose', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
+    addParameter(p, 'tau', 3, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'threshold', 0.05, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'kernel_shape', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'FFT_nullspace_C_calculation', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'PowerIteration_G_nullspace_vectors', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'M', 30, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'PowerIteration_flag_convergence', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'PowerIteration_flag_auto', 0, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'FFT_interpolation', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'interp_zp', 24, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'gauss_win_param', 100, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'sketched_SVD', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'sketch_dim', 500, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'visualize_C_matrix_sv', 0, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'verbose', 1, @(x) isnumeric(x) && isscalar(x));
 
     parse(p, kCal, dim_sens, varargin{:});
    

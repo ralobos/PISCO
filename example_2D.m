@@ -43,7 +43,7 @@ kData = double(kData);
 [N1, N2, Nc] = size(kData);
 
 figure; 
-imagesc(mdisp(abs(fftshift(ifft2(ifftshift(kData)))))); 
+imagesc(+utils.mdisp(abs(fftshift(ifft2(ifftshift(kData)))))); 
 axis image; 
 axis tight; 
 axis off; 
@@ -55,11 +55,11 @@ caxis([0 1e-8]);
 
 cal_length = 32; % Length of each dimension of the calibration data
 
-center_x = ceil(N1/2)+even_pisco(N1);
-center_y = ceil(N2/2)+even_pisco(N2);
+center_x = ceil(N1/2) + utils.even_pisco(N1);
+center_y = ceil(N2/2) + utils.even_pisco(N2);
 
-cal_index_x = center_x + [-floor(cal_length/2):floor(cal_length/2)-even_pisco(cal_length/2)];
-cal_index_y = center_y + [-floor(cal_length/2):floor(cal_length/2)-even_pisco(cal_length/2)];
+cal_index_x = center_x + [-floor(cal_length/2):floor(cal_length/2) - utils.even_pisco(cal_length/2)];
+cal_index_y = center_y + [-floor(cal_length/2):floor(cal_length/2) - utils.even_pisco(cal_length/2)];
 
 kCal = kData(cal_index_x,cal_index_y, :);
 
@@ -121,7 +121,7 @@ kernel_shape = 0;                   % Binary variable. 1 = ellipsoidal shape is 
                                     % the calculation of kernels (instead of rectangular shape).
                                     % Default: 1
 
-FFT_nullspace_C_calculation = 1;    % Binary variable. 1 = FFT-based calculation of nullspace 
+FFT_nullspace_C_calculation = 0;    % Binary variable. 1 = FFT-based calculation of nullspace 
                                     % vectors of C by calculating C'*C directly (instead of 
                                     % calculating C first). Default: 1
 
@@ -130,7 +130,7 @@ sketched_SVD = 1;                   % Binary variable. 1 = sketched SVD is used 
                                     % calculating the nullspace vectors directly and then the 
                                     % basis). Default: 1
 
-PowerIteration_G_nullspace_vectors = 1; % Binary variable. 1 = Power Iteration approach is 
+PowerIteration_G_nullspace_vectors = 0; % Binary variable. 1 = Power Iteration approach is 
                                         % used to find nullspace vectors of the G matrices 
                                         % (instead of using SVD). Default: 1
 
@@ -182,7 +182,7 @@ senseMaps_masked= senseMaps.*eig_mask;
 %% Estimated Sensitivity Maps 
 
 figure; 
-imagesc(mdisp(abs(senseMaps))); 
+imagesc(utils.mdisp(abs(senseMaps))); 
 axis tight; 
 axis image; 
 axis off;
@@ -190,7 +190,7 @@ colormap gray;
 title('Estimated sensitivity maps');
 
 figure; 
-imagesc(mdisp(abs(senseMaps_masked))); 
+imagesc(utils.mdisp(abs(senseMaps_masked))); 
 axis tight; 
 axis image; 
 axis off;
@@ -209,7 +209,7 @@ if PowerIteration_G_nullspace_vectors == 1
 else
     title_eig_values = 'Eigenvalues of normalized G matrices (spatial maps)';
     figure; 
-    imagesc(mdisp(eigenValues)); 
+    imagesc(utils.mdisp(eigenValues)); 
     axis tight; 
     axis image; 
     colormap gray; 
@@ -224,38 +224,3 @@ axis image;
 colormap gray; 
 title('Support mask');
 
-%% Auxiliary functions
-
-function result = even_pisco(int)
-% Function that checks if an integer is even.
-%
-% Input parameters:
-%   --int:    Integer value to be checked.
-%
-% Output parameters:
-%   --result: Logical value. Returns 1 (true) if int is even, 0 (false) otherwise.
-%
-    result = not(rem(int,2));
-end
-
-function tempForDisplay = mdisp(x)
-% Function used to visualize multichannel images.
-% If the input corresponds to a 3D array of dimensions N1 x N2 x Nc, the
-% output corresponds to a 2D array that displays Nc images of dimension
-% N1 x N2.
-%
-% Input parameters:
-%   --x:              3D array of size N1 x N2 x Nc, where Nc is the number
-%                     of channels.
-%
-% Output parameters:
-%   --tempForDisplay: 2D array that arranges the Nc images of size N1 x N2
-%                     into a single displayable image.
-%
-
-    [N1,N2,Nc] = size(x);
-    f = factor(Nc);if numel(f)==1;f = [1,f];end
-    tempForDisplay = reshape(permute(reshape(x,[N1,N2,prod(f(1:floor(numel(f)/2))),...
-        prod(f(floor(numel(f)/2)+1:end))]),[1,3,2,4]),[N1*prod(f(1:floor(numel(f)/2))),...
-        N2*prod(f(floor(numel(f)/2)+1:end))]); 
-end

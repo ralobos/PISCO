@@ -65,19 +65,18 @@ function [senseMaps, eigenVal] = nullspace_vectors_G_matrix_2D(kCal, N1, N2, G, 
 
 p = inputParser;
 
-p.addRequired('kCal');
-p.addRequired('N1', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('N2', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
+p.addRequired('kCal', @(x) isnumeric(x) && ndims(x) == 3);
+p.addRequired('N1', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('N2', @(x) isnumeric(x) && isscalar(x));
 p.addRequired('G', @(x) isnumeric(x) && ndims(x) == 4);
-p.addRequired('patchSize', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-
-p.addParameter('PowerIteration_G_nullspace_vectors', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addParameter('M', 30, @(x)  validateattributes(x, {'numeric'}, {'scalar'}));
-p.addParameter('PowerIteration_flag_convergence', 1, @(x) isnumeric(x));
-p.addParameter('PowerIteration_flag_auto', 0, @(x) isnumeric(x));
-p.addParameter('FFT_interpolation', 1, @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addParameter('gauss_win_param', 100, @(x) isnumeric(x));
-p.addParameter('verbose', 1);
+p.addRequired('patchSize', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('PowerIteration_G_nullspace_vectors', 1, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('M', 30, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('PowerIteration_flag_convergence', 1, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('PowerIteration_flag_auto', 0, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('FFT_interpolation', 1, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('gauss_win_param', 100, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('verbose', 1, @(x) isnumeric(x) && isscalar(x));
 
 if isempty(varargin)
     parse(p, kCal, N1, N2, G, patchSize);

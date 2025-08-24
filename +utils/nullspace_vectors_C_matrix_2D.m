@@ -46,14 +46,14 @@ function U = nullspace_vectors_C_matrix_2D(kCal, varargin)
 
 p = inputParser;
 
-p.addRequired('kCal');
-p.addRequired('tau', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('threshold', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('kernel_shape', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('FFT_nullspace_C_calculation', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('sketched_SVD', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('sketch_dim', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
-p.addRequired('visualize_C_matrix_sv', @(x) validateattributes(x, {'numeric'}, {'scalar'}));
+p.addRequired('kCal', @(x) isnumeric(x) && ndims(x) == 3);
+p.addRequired('tau', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('threshold', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('kernel_shape', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('FFT_nullspace_C_calculation', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('sketched_SVD', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('sketch_dim', @(x) isnumeric(x) && isscalar(x));
+p.addRequired('visualize_C_matrix_sv', @(x) isnumeric(x) && isscalar(x));
 
 parse(p, kCal, varargin{:});
 
