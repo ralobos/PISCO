@@ -273,7 +273,7 @@ N2_g_new = N2;
 
 %Create frequency coordinate grids for phase correction
 %Apply conjugate and reshape for FFT processing
-G_new_reshaped = conj(reshape(G_new, grid_size, grid_size, Nc, Nc));
+% G_new_reshaped = conj(reshape(G_new, grid_size, grid_size, Nc, Nc));
 
 % Pre-center via spatial modulation and use uncentered freq indices
 row = (0:grid_size-1).'; col = 0:grid_size-1;
@@ -391,6 +391,19 @@ PowerIteration_flag_convergence = 1;
 PowerIteration_flag_auto = 1;
 FFT_interpolation = 1;
 
+opts_G_matrix = struct( ...
+    'kernel_shape', 1, ...
+    'FFT_interpolation', FFT_interpolation, ...
+    'interp_zp', 24, ...
+    'sketched_SVD', 0);
+
+fn = fieldnames(opts_G_matrix);
+fv = struct2cell(opts_G_matrix);
+nv = [fn.'; fv.'];          
+nv = nv(:).';   
+
+G_fun = utils.G_matrices_2D(kCal, N1, N2, tau, U, nv{:});
+
 opts = struct( ...
   'PowerIteration_G_nullspace_vectors', PowerIteration_G_nullspace_vectors, ...
   'M', M, ...
@@ -405,7 +418,7 @@ fv = struct2cell(opts);
 nv = [fn.'; fv.'];          % interleave names and values
 nv = nv(:).';     
 
-[senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D(kCal, N1, N2, G_new, patchSize, nv{:});
+[senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D(kCal, N1, N2, G_fun, patchSize, nv{:});
 
 % Phase-reference all coils to the first coil 
 phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
