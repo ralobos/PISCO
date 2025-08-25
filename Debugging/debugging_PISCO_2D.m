@@ -383,3 +383,91 @@ fprintf('  • Vectorized array operations instead of element-wise updates\n');
 fprintf('  • Pre-computed base indices outside the loop\n');
 fprintf('  • Maintained identical mathematical accuracy\n');
 
+%% Nullspace vectors of the G matrices
+
+PowerIteration_G_nullspace_vectors = 0;
+M = 15;
+PowerIteration_flag_convergence = 1;
+PowerIteration_flag_auto = 1;
+FFT_interpolation = 1;
+
+opts = struct( ...
+  'PowerIteration_G_nullspace_vectors', PowerIteration_G_nullspace_vectors, ...
+  'M', M, ...
+  'PowerIteration_flag_convergence', PowerIteration_flag_convergence, ...
+  'PowerIteration_flag_auto', PowerIteration_flag_auto, ...
+  'FFT_interpolation', FFT_interpolation, ...
+  'gauss_win_param', 100, ...
+  'verbose', 1);
+
+fn = fieldnames(opts);
+fv = struct2cell(opts);
+nv = [fn.'; fv.'];          % interleave names and values
+nv = nv(:).';     
+
+[senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D(kCal, N1, N2, G_new, patchSize, nv{:});
+
+% Phase-reference all coils to the first coil 
+phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
+senseMaps = senseMaps .* phase_ref;  % align phase to channel 1
+
+% Normalize sensitivities to unit L2 norm across coils at each pixel
+den = sqrt(sum(abs(senseMaps).^2, 3));
+den(den == 0) = 1;  % avoid division by zero (keeps zeros at zero)
+senseMaps = senseMaps ./ den;
+%% Support mask created from the last eigenvalues of the G matrices 
+
+threshold_mask = 0.05;
+
+% Logical mask from the last eigenvalue map (no find/preallocation needed)
+eig_last = eigenValues(:,:,end);
+eig_mask = eig_last < threshold_mask;  % N1xN2 logical
+
+% Optional masking step
+
+senseMaps_masked= senseMaps.*eig_mask;
+
+%% Estimated Sensitivity Maps 
+
+figure; 
+imagesc(utils.mdisp(abs(senseMaps))); 
+axis tight; 
+axis image; 
+axis off;
+colormap gray; 
+title('Estimated sensitivity maps');
+
+figure; 
+imagesc(utils.mdisp(abs(senseMaps_masked))); 
+axis tight; 
+axis image; 
+axis off;
+colormap gray; 
+title('Masked sensitivity maps');
+
+if PowerIteration_G_nullspace_vectors == 1 
+    title_eig_values = 'Smallest eigenvalue of normalized G matrices (spatial map)';
+    figure; 
+    imagesc(eigenValues); 
+    axis tight; 
+    axis image; 
+    colormap gray; 
+    colorbar; 
+    title(title_eig_values); 
+else
+    title_eig_values = 'Eigenvalues of normalized G matrices (spatial maps)';
+    figure; 
+    imagesc(utils.mdisp(eigenValues)); 
+    axis tight; 
+    axis image; 
+    colormap gray; 
+    colorbar; 
+    title(title_eig_values); 
+end
+
+figure; 
+imagesc(eig_mask); 
+axis tight; 
+axis image; 
+colormap gray; 
+title('Support mask');
