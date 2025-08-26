@@ -117,11 +117,11 @@ visualize_C_matrix_sv = 1;            % Binary variable. 1 = Singular values of 
 
 % The following techniques are used if the corresponding binary variable is equal to 1
 
-kernel_shape = 1;                   % Binary variable. 1 = ellipsoidal shape is adopted for 
+kernel_shape = 0;                   % Binary variable. 1 = ellipsoidal shape is adopted for 
                                     % the calculation of kernels (instead of rectangular shape).
                                     % Default: 1
 
-FFT_nullspace_C_calculation = 1;    % Binary variable. 1 = FFT-based calculation of nullspace 
+FFT_nullspace_C_calculation = 0;    % Binary variable. 1 = FFT-based calculation of nullspace 
                                     % vectors of C by calculating C'*C directly (instead of 
                                     % calculating C first). Default: 1
 

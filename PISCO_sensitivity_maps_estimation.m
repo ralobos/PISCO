@@ -114,8 +114,8 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     p = inputParser;
 
-    addRequired(p, 'kCal', @(x) isnumeric(x) && ndims(x) == 3);
-    addRequired(p, 'dim_sens', @(x) isnumeric(x) && isvector(x) && length(x) == 2);
+    addRequired(p, 'kCal', @(x) isnumeric(x) && (ndims(x) == 3 || ndims(x) == 4));
+    addRequired(p, 'dim_sens', @(x) isnumeric(x) && isvector(x) && (length(x) == 2 || length(x) == 3));
 
     addParameter(p, 'tau', 3, @(x) isnumeric(x) && isscalar(x));
     addParameter(p, 'threshold', 0.05, @(x) isnumeric(x) && isscalar(x));
@@ -196,26 +196,26 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     t_null_vecs = tic;
 
+    opts_nullspace_C_matrix = struct( ...
+        'tau', p.Results.tau,...
+        'threshold', p.Results.threshold,...
+        'kernel_shape', p.Results.kernel_shape,...
+        'FFT_nullspace_C_calculation', p.Results.FFT_nullspace_C_calculation,...
+        'sketched_SVD', p.Results.sketched_SVD,...
+        'sketch_dim', p.Results.sketch_dim,...
+        'visualize_C_matrix_sv', p.Results.visualize_C_matrix_sv...
+            );
+
+    fn = fieldnames(opts_nullspace_C_matrix);
+    fv = struct2cell(opts_nullspace_C_matrix);
+    nv = [fn.'; fv.'];
+    nv = nv(:).';
+
+
     if flag_3D == 0
-
-        opts_nullspace_C_matrix_2D = struct( ...
-            'tau', p.Results.tau,...
-            'threshold', p.Results.threshold,...
-            'kernel_shape', p.Results.kernel_shape,...
-            'FFT_nullspace_C_calculation', p.Results.FFT_nullspace_C_calculation,...
-            'sketched_SVD', p.Results.sketched_SVD,...
-            'sketch_dim', p.Results.sketch_dim,...
-            'visualize_C_matrix_sv', p.Results.visualize_C_matrix_sv...
-             );
-
-        fn = fieldnames(opts_nullspace_C_matrix_2D);
-        fv = struct2cell(opts_nullspace_C_matrix_2D);
-        nv = [fn.'; fv.'];
-        nv = nv(:).';
-
         U = utils.nullspace_vectors_C_matrix_2D(kCal, nv{:});
     else
-        U = nullspace_vectors_C_matrix_3D(kCal, p.Results.tau, p.Results.threshold, p.Results.kernel_shape, p.Results.FFT_nullspace_C_calculation, p.Results.sketched_SVD, p.Results.sketch_dim, p.Results.visualize_C_matrix_sv);
+        U = utils.nullspace_vectors_C_matrix_3D(kCal, nv{:});
     end
 
     t_null_vecs = toc(t_null_vecs);
@@ -338,9 +338,14 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     if flag_3D == 0
         
-        senseMaps = senseMaps.*repmat((exp(-complex(0,1)*angle(senseMaps(:,:,1)))), [1 1 Nc]); %Final maps after phase referencing w.r.t the first channel
+        % Phase-reference all coils to the first coil 
+        phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
+        senseMaps = senseMaps .* phase_ref;  % align phase to channel 1
 
-        senseMaps = senseMaps./repmat(sqrt(sum(abs(senseMaps).^2,3)), [1 1 Nc]);
+        % Normalize sensitivities to unit L2 norm across coils at each pixel
+        den = sqrt(sum(abs(senseMaps).^2, 3));
+        den(den == 0) = 1;  % avoid division by zero (keeps zeros at zero)
+        senseMaps = senseMaps ./ den;
 
     else
 
@@ -358,291 +363,6 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 end
 
 %% Extra functions
-
-function U = nullspace_vectors_C_matrix_3D(kCal, tau, threshold, kernel_shape, FFT_nullspace_C_calculation, sketched_SVD, sketch_dim, visualize_C_matrix_sv)
-
-% Function that returns the nullspace vectors of the C matrix.
-%
-% Input parameters:
-%   --kCal:                      N1_cal x N2_cal x N3_cal x Nc block of calibration data, where
-%                                N1_cal, N2_cal, and N3_cal are the dimensions of a rectangular
-%                                block of Nyquist-sampled k-space, and Nc is the number of
-%                                channels in the array.
-%
-%   --tau:                       Parameter (in Nyquist units) that determines the size of
-%                                the k-space kernel. For a rectangular kernel, the size
-%                                corresponds to (2*tau+1) x (2*tau+1) x (2*tau+1). For an
-%                                ellipsoidal kernel, it corresponds to the radius of the
-%                                associated neighborhood. Default: 3.
-%
-%   --threshold:                 Specifies how small a singular value needs to be
-%                                (relative to the maximum singular value) before its
-%                                associated singular vector is considered to be in the
-%                                nullspace of the C-matrix. Default: 0.05.
-%
-%   --kernel_shape:              Binary variable. 0 = rectangular kernel, 1 = ellipsoidal
-%                                kernel. Default: 1.
-%
-%   --FFT_nullspace_C_calculation: Binary variable. 0 = nullspace vectors of
-%                                the C matrix are calculated from C'*C by calculating C
-%                                first. 1 = nullspace vectors of the C matrix are calculated
-%                                from C'*C, which is calculated directly using an FFT-based
-%                                approach. Default: 1.
-%
-%   --sketched_SVD:              Binary variable. 1 = sketched SVD is used to calculate
-%                                a basis for the nullspace of the C matrix. Default: 1.
-%
-%   --sketch_dim:                Dimension of the sketch matrix used to calculate a basis
-%                                for the nullspace of the C matrix using a sketched SVD.
-%                                Only used if sketched_SVD is enabled. Default: 500.
-%
-%   --visualize_C_matrix_sv:     Binary variable. 1 = Singular values of the C matrix are displayed.
-%                                Default: 0. 
-%                                Note: If sketched_SVD = 1 and if the curve of the singular values flattens out,
-%                                it suggests that the sketch dimension is appropriate for the data.
-%
-% Output parameters:
-%   --U:                         Matrix whose columns correspond to the nullspace vectors
-%                                of the C matrix.
-
-if nargin < 2 || not(isnumeric(tau)) || not(numel(tau))
-    tau = 3;
-end
-
-if nargin < 3 || not(isnumeric(threshold)) || not(numel(threshold))
-    threshold = 0.05;
-end
-
-if nargin < 4 || not(isnumeric(kernel_shape)) || not(numel(kernel_shape))
-    kernel_shape = 1;
-end
-
-if nargin < 5 || not(isnumeric(FFT_nullspace_C_calculation)) || not(numel(FFT_nullspace_C_calculation))
-    FFT_nullspace_C_calculation = 1;
-end
-
-if FFT_nullspace_C_calculation == 0
-    
-    C = utils.C_matrix_3D(kCal(:), size(kCal,1), size(kCal,2), size(kCal,3), size(kCal,4), tau, kernel_shape);
-       
-    ChC = C'*C;
-    clear C
-    
-else
-    
-    ChC = utils.ChC_FFT_convolutions_3D(kCal, size(kCal,1), size(kCal,2), size(kCal,3), size(kCal,4), tau, 1, kernel_shape);
-      
-end
-
-if nargin < 6 || not(isnumeric(sketched_SVD)) || not(numel(sketched_SVD))
-    sketched_SVD = 1;
-end
-
-if nargin < 7 || not(isnumeric(sketch_dim)) || not(numel(sketch_dim))
-    sketch_dim = 500;
-end
-
-if nargin < 8 || not(isnumeric(visualize_C_matrix_sv)) || not(numel(visualize_C_matrix_sv))
-    visualize_C_matrix_sv = 0;
-end
-
-if sketched_SVD == 0
-
-    [~,Sc,U] = svd(ChC,'econ');
-    clear ChC
-    sing = diag(Sc);
-    clear Sc
-    
-    sing = sqrt(sing);
-    sing  = sing/sing(1);
-
-    if visualize_C_matrix_sv == 1
-
-        % Visualize singular values of the C matrix
-        figure;
-        plot(sing, 'o-');
-        title('Singular values of the C matrix');
-        grid on;
-        xlim([1 numel(sing)]);
-        ylim([0 1]);
-        xlabel('Index');
-        ylabel('Singular value');
-
-    end
-
-
-    Nvect = find(sing >=threshold*sing(1),1,'last');
-    clear sing
-    U = U(:, Nvect+1:end); 
-
-else
-
-    %Sketching
-
-    [~, N2c] = size(ChC);
-    Sk = (1/sqrt(sketch_dim))*randn(sketch_dim, N2c) + (1/sqrt(sketch_dim))*1i*randn(sketch_dim, N2c);
-    C = Sk*ChC;
-    [~, sing, Vf] = svd(C, 'econ', 'vector');
-
-    sing = sqrt(sing);
-    sing  = sing/sing(1);
-
-    if visualize_C_matrix_sv == 1
-
-    
-        figure;
-        plot(sing, 'o-');
-        title('Singular values of the C matrix (sketched SVD)');
-        grid on;
-        xlim([1 numel(sing)]);
-        ylim([0 1]);
-        xlabel('Index');
-        ylabel('Singular value');
-    end
-
-    rank_C = find(sing >=threshold*sing(1),1,'last');
-    clear sing
-
-    U = Vf(:,1:rank_C);
-    clear Vf
-    
-end
-end
-
-function G = G_matrices_2D(kCal, N1, N2, tau, U, kernel_shape, FFT_interpolation, interp_zp, sketched_SVD)
-
-% Function that calculates the G(x) matrices directly without calculating
-% H(x) first.
-%
-% Input parameters:
-%   --kCal:         N1_cal x N2_cal x Nc block of calibration data,
-%                   where N1_cal and N2_cal are the dimensions of a
-%                   rectangular block of Nyquist-sampled k-space, and
-%                   Nc is the number of channels in the array.
-%
-%   --N1, N2:       The desired dimensions of the output sensitivity
-%                   matrices.
-%
-%   --tau:          Parameter (in Nyquist units) that determines the
-%                   size of the k-space kernel. For a rectangular
-%                   kernel, the size corresponds to (2*tau+1) x
-%                   (2*tau+1). For an ellipsoidal kernel, it
-%                   corresponds to the radius of the associated
-%                   neighborhood. Default: 3.
-%
-%   --U:            Matrix whose columns correspond to the nullspace
-%                   vectors of the C matrix.
-%
-%   --kernel_shape: Binary variable. 0 = rectangular kernel, 1 = ellipsoidal
-%                   kernel. Default: 1.
-%
-%   --FFT_interpolation: Binary variable. 0 = no interpolation is used,
-%                   1 = FFT-based interpolation is used. Default: 1.
-%
-%   --interp_zp:    Amount of zero-padding to create the low-resolution
-%                   grid if FFT-interpolation is used. The low-resolution
-%                   grid has dimensions (N1_acs + interp_zp) x
-%                   (N2_acs + interp_zp) x Nc. Default: 24.
-%
-%   --sketched_SVD: Binary variable. 1 = sketched SVD is used to calculate
-%                   a basis for the nullspace of the C matrix. Default: 1.
-%
-% Output parameters:
-%   --G:            N1 x N2 x Nc x Nc array where G[i,j,:,:]
-%                   corresponds to the G matrix at the (i,j) spatial
-%                   location.
-
-if nargin < 4 || not(isnumeric(tau)) || not(numel(tau))
-    tau = 3;
-end
-
-if nargin < 6 || not(isnumeric(kernel_shape)) || not(numel(kernel_shape))
-    kernel_shape = 1;
-end
-
-if nargin < 7 || not(isnumeric(FFT_interpolation)) || not(numel(FFT_interpolation))
-    FFT_interpolation = 1;
-end
-
-if nargin < 8 || not(isnumeric(interp_zp)) || not(numel(interp_zp))
-    interp_zp = 24;
-end
-
-if nargin < 9 || not(isnumeric(sketched_SVD)) || not(numel(sketched_SVD))
-    sketched_SVD = 1;
-end
-
-[N1_cal, N2_cal, Nc] = size(kCal);
-
-[in1,in2] = meshgrid(-tau:tau,-tau:tau);
-
-if kernel_shape == 0 
-
-    ind = [1:numel(in1)]'; 
-    
-else 
-    
-    ind = find(in1.^2+in2.^2<=tau^2); 
-    
-end
-
-in1 = in1(ind)';
-in2 = in2(ind)';
-
-patchSize = numel(in1);
-
-in1 = in1(:);
-in2 = in2(:);
-
-eind = [patchSize:-1:1]';
-
-G = zeros(2*(2*tau+1)* 2*(2*tau+1),Nc,Nc);
-
-if sketched_SVD == 0
-    W = U*U';
-else
-    W = eye(size(U, 1)) - U*U';
-end
-
-clear U;
-W = permute(reshape(W,patchSize,Nc,patchSize,Nc),[1,2,4,3]);
-
-for s = 1:patchSize 
-    G(sub2ind([2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s)),:,:) = ...
-        G(sub2ind([2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s)),:,:)  + W(:,:,:,s);
-end
-
-clear W
-
-if FFT_interpolation == 0
-    
-    N1_g = N1;
-    N2_g = N2;
-    
-else
-  
-    if N1_cal <= N1 - interp_zp
-        N1_g = N1_cal + interp_zp;
-    else   
-        N1_g = N1_cal;
-    end
-
-    if N2_cal <= N2 - interp_zp
-        N2_g = N2_cal + interp_zp;
-    else   
-        N2_g = N2_cal;
-    end
-    
-end
-
-[n2,n1] = meshgrid([-N2_g/2:N2_g/2-1]/N2_g,[-N1_g/2:N1_g/2-1]/N1_g);
-phaseKernel = exp(complex(0,-2*pi)*(n1*(N1_g-2*tau-1)+n2*(N2_g-2*tau-1)));
-
-G = fft2(conj(reshape(G,2*(2*tau+1),2*(2*tau+1),Nc,Nc)),N1_g,N2_g).*phaseKernel; 
-
-G = fftshift(fftshift(G,1),2);
-
-end
 
 function G = G_matrices_3D(kCal, N1, N2, N3, tau, U, kernel_shape, FFT_nullspace_C_calculation, FFT_interpolation, interp_zp, sketched_SVD)
 
@@ -787,7 +507,7 @@ end
 [n2,n1,n3] = meshgrid([-N2_g/2:N2_g/2-1]/N2_g,[-N1_g/2:N1_g/2-1]/N1_g, [-N3_g/2:N3_g/2-1]/N3_g);
 phaseKernel = -exp(complex(0,-2*pi)*(n1*(N1_g-2*tau-1)+n2*(N2_g-2*tau-1)+n3*(N3_g-2*tau-1)));
 
-G = fft3(conj(reshape(G,2*(2*tau+1),2*(2*tau+1),2*(2*tau+1),Nc,Nc)),N1_g,N2_g,N3_g).*phaseKernel; 
+G = utils.fft3(conj(reshape(G,2*(2*tau+1),2*(2*tau+1),2*(2*tau+1),Nc,Nc)),N1_g,N2_g,N3_g).*phaseKernel; 
 
 G = fftshift(fftshift(fftshift(G,1),2),3);
 
@@ -796,146 +516,6 @@ if FFT_nullspace_C_calculation == 1
     % approach, the G matrices are flipped in all three dimensions.
     G = flip(flip(flip(G, 2), 1), 3);
 end 
-
-% ==== FFT-based interpolation ====
-
-if FFT_interpolation == 1
-
-    [N1_cal, N2_cal, ~] = size(kCal);
-    
-    w_sm = [0.54 - 0.46*cos(2*pi*([0:(N1_g-1)]/(N1_g-1)))].';
-    w_sm2 = [0.54 - 0.46*cos(2*pi*([0:(N2_g-1)]/(N2_g-1)))].';
-    w_sm = w_sm*w_sm2';
-    w_sm = repmat(w_sm, [1 1 Nc]); 
-
-    if PowerIteration_G_nullspace_vectors == 1 && (PowerIteration_flag_convergence == 1 || PowerIteration_flag_auto == 1) 
-
-        auxVal = 1 - eigen1;
-
-        eigenVal = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(auxVal))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-        threshold_mask = 0.075;
-        
-        support_mask = zeros(size(eigenVal));
-        support_mask(find(eigenVal < threshold_mask)) = 1;
-    
-        eigen1_us = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigen1))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-    
-        eigen2_us = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigen2))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-    
-        ratioEig = (eigen2_us./eigen1_us).^M;
-        ratio_small = support_mask.*ratioEig;
-    
-        th_ratio = 0.008;
-    
-        ratio_small(find(ratio_small <= th_ratio)) = 0;
-        ratio_small(find(ratio_small > th_ratio)) = 1;
-    
-        flag_convergence_PI = sum(ratio_small(:)) > 0;
-    
-        if flag_convergence_PI == 1 && PowerIteration_flag_convergence == 1
-            error(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                ' iterations indicated by the user. Increasing the number of iterations is recommended. You can ignore this error by setting PowerIteration_flag_convergence = 0. '...
-                'The number of needed iterations for convergence can be found automatically by setting PowerIteration_flag_auto = 1. '])   
-        end
-
-        if flag_convergence_PI == 0
-            if verbose == 1
-                 disp(['Most likely Power Iteration has converged for all the voxels within the support after the ' int2str(M) ' iterations indicated by the user.'])
-            end
-        end
-
-    if PowerIteration_flag_auto == 1 && flag_convergence_PI == 1
-        if verbose == 1
-            warning('off','backtrace')
-            warning(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                    ' iterations indicated by the user. The number of iterations for the convergence of Power Iteration will be found automatically. You can turn off this option by setting PowerIteration_flag_auto = 0.'])
-        end
-        M_auto = M+1;
-        while(flag_convergence_PI == 1)
-            S = pagemtimes(G_null, S);
-            S2 = pagemtimes(G_null, S2);
-            
-            S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-    
-            inner_prod = pagemtimes(S(:,1,:), 'ctranspose', S2(:,1,:), 'none');
-    
-            S2(:,1,:) = S2(:,1,:) - inner_prod.*S(:,1,:);
-
-            S2(:,1,:) = S2(:,1,:)./pagenorm(S2(:,1,:));
-    
-            E = pagemtimes(S, 'ctranspose', pagemtimes(G_null, S), 'none');
-            E2 = pagemtimes(S2, 'ctranspose', pagemtimes(G_null, S2), 'none');
-
-            eigen1 = reshape(permute(E, [3 1 2]), [N1_g, N2_g]);
-            eigen2 = reshape(permute(E2, [3 1 2]), [N1_g, N2_g]);
-
-            auxVal = 1 - eigen1;
-
-            eigenVal = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(auxVal))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-
-            eigenVal = eigenVal/max(eigenVal(:));
-            
-            support_mask = zeros(size(eigenVal));
-            support_mask(find(eigenVal < threshold_mask)) = 1;
-
-            eigen1_us = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigen1))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-    
-            eigen2_us = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigen2))).*w_sm(:,:,end), N1, N2), 1), 2));     
-    
-            ratioEig = (eigen2_us./eigen1_us).^M_auto;
-            ratio_small = support_mask.*ratioEig;
-        
-            ratio_small(find(ratio_small <= th_ratio)) = 0;
-            ratio_small(find(ratio_small > th_ratio)) = 1;
-        
-            flag_convergence_PI = sum(ratio_small(:)) > 0;
-
-            M_auto = M_auto + 1;
-        end
-
-        if verbose == 1
-            disp(['Most likely Power Iteration has converged for all the voxels within the support. ' int2str(M_auto) ' iterations were needed.'] )
-        end
-
-    end
-
-    end
-
-    if PowerIteration_G_nullspace_vectors == 1 && PowerIteration_flag_convergence == 0 && PowerIteration_flag_auto == 0
-
-        eigenVal = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigenVal))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-    end
-
-    if PowerIteration_G_nullspace_vectors == 0
-
-        eigenVal = abs(fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(eigenVal))).*w_sm(:,:,end), N1, N2), 1), 2)); 
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-    end
-    
-    apodizing_window = gausswin(N1_g,gauss_win_param)*gausswin(N2_g,gauss_win_param)';
-    
-    imLowRes_cal = zeros(N1_g,N2_g,Nc);
-    imLowRes_cal(ceil(N1_g/2)+even_pisco(N1_g/2)+[-floor(N1_cal/2):floor(N1_cal/2)-even_pisco(N1_cal/2)],ceil(N2_g/2)+even_pisco(N2_g/2)+[-floor(N2_cal/2):floor(N2_cal/2)-even_pisco(N2_cal/2)],:) = kCal;
-    imLowRes_cal = fftshift(ifft2(ifftshift(imLowRes_cal.*apodizing_window)));    
-
-    cim = sum(conj(senseMaps).*imLowRes_cal,3)./sum(abs(senseMaps).^2,3); 
-
-    senseMaps = senseMaps.*repmat((exp(complex(0,1)*angle(cim))), [1 1 Nc]); 
-
-    senseMaps = fftshift(fftshift(ifft2(fftshift(fft2(ifftshift(senseMaps))).*w_sm, N1, N2), 1), 2); 
-
-    
-
-end
-
 
 end
 
@@ -1239,7 +819,7 @@ if FFT_interpolation == 1
 
         auxVal = 1 - eigen1;
 
-        eigenVal = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(auxVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
+        eigenVal = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(auxVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
 
         eigenVal = eigenVal/max(eigenVal(:));
 
@@ -1248,10 +828,10 @@ if FFT_interpolation == 1
         support_mask = zeros(size(eigenVal));
         support_mask(find(eigenVal < threshold_mask)) = 1;
     
-        eigen1_us = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigen1).*w_sm, [N1 N2 N3]), 1), 2), 3));
-    
-        eigen2_us = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigen2).*w_sm, [N1 N2 N3]), 1), 2), 3)); 
-    
+        eigen1_us = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(eigen1).*w_sm, [N1 N2 N3]), 1), 2), 3));
+
+        eigen2_us = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(eigen2).*w_sm, [N1 N2 N3]), 1), 2), 3));
+
         ratioEig = (eigen2_us./eigen1_us).^M;
         ratio_small = support_mask.*ratioEig;
     
@@ -1352,9 +932,9 @@ if FFT_interpolation == 1
     apodizing_window = bsxfun(@times, apodizing_window_2D, reshape(gausswin(N3_g,gauss_win_param), [1 1 N3_g]));
 
     imLowRes_cal = zeros(N1_g,N2_g,N3_g,Nc);
-    imLowRes_cal(ceil(N1_g/2)+even_pisco(N1_g/2)+[-floor(N1_cal/2):floor(N1_cal/2)-even_pisco(N1_cal/2)],ceil(N2_g/2)+even_pisco(N2_g/2)+[-floor(N2_cal/2):floor(N2_cal/2)-even_pisco(N2_cal/2)],...
-        ceil(N3_g/2)+even_pisco(N3_g/2)+[-floor(N3_cal/2):floor(N3_cal/2)-even_pisco(N3_cal/2)],:) = kCal;
-    imLowRes_cal = ift3(imLowRes_cal.*apodizing_window); 
+    imLowRes_cal(ceil(N1_g/2)+utils.even_pisco(N1_g/2)+[-floor(N1_cal/2):floor(N1_cal/2)-utils.even_pisco(N1_cal/2)],ceil(N2_g/2)+utils.even_pisco(N2_g/2)+[-floor(N2_cal/2):floor(N2_cal/2)-utils.even_pisco(N2_cal/2)],...
+        ceil(N3_g/2)+utils.even_pisco(N3_g/2)+[-floor(N3_cal/2):floor(N3_cal/2)-utils.even_pisco(N3_cal/2)],:) = kCal;
+    imLowRes_cal = utils.ift3(imLowRes_cal.*apodizing_window); 
 
     cim = sum(conj(senseMaps).*imLowRes_cal,4)./sum(abs(senseMaps).^2,4) ;  
 
@@ -1362,93 +942,14 @@ if FFT_interpolation == 1
 
     senseMaps = phase_norm.*senseMaps;
 
-    senseMaps = fftshift(fftshift(fftshift(ifft3_zp(ft3(senseMaps).*w_sm_sM, [N1 N2 N3]), 1), 2), 3); 
+    senseMaps = fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(senseMaps).*w_sm_sM, [N1 N2 N3]), 1), 2), 3); 
 
 end
 
 end
 
-function out = ft3(x)
-% Function that computes the 3D Fourier transform of the input array x,
-% applying fftshift and ifftshift for proper centering.
-%
-% Input parameters:
-%   --x:   4D array of size [N1, N2, N3, Nc], where N1, N2, N3 are spatial
-%          dimensions and Nc is the number of channels.
-%
-% Output parameters:
-%   --out: 4D array of the same size as x, containing the 3D Fourier
-%          transform along the first three dimensions, with the result
-%          centered using fftshift.
-%
-out = fftshift(fft(fft(fft(ifftshift(x),[],1),[],2),[],3));
-end
 
-function out = ift3(x)
-% Function that computes the inverse 3D Fourier transform of the input array x,
-% applying fftshift and ifftshift for proper centering.
-%
-% Input parameters:
-%   --x:   4D array of size [N1, N2, N3, Nc], where N1, N2, N3 are spatial
-%          dimensions and Nc is the number of channels.
-%
-% Output parameters:
-%   --out: 4D array of the same size as x, containing the inverse 3D Fourier
-%          transform along the first three dimensions, with the result
-%          centered using fftshift.
-%
-out = fftshift(ifft(ifft(ifft(ifftshift(x),[],1),[],2),[],3));
-end
 
-function out = fft3(x, N1, N2, N3)
-% Function that computes the 3D Fourier transform of the input array x,
-% along the first three dimensions, with optional size specification.
-%
-% Input parameters:
-%   --x:   4D array of size [N1, N2, N3, Nc], where N1, N2, N3 are spatial
-%          dimensions and Nc is the number of channels.
-%   --N1:  Size of the first dimension for the FFT.
-%   --N2:  Size of the second dimension for the FFT.
-%   --N3:  Size of the third dimension for the FFT.
-%
-% Output parameters:
-%   --out: 4D array of the same size as x (with specified N1, N2, N3),
-%          containing the 3D Fourier transform along the first three
-%          dimensions.
-%
-out = fft(fft(fft(x, N1, 1), N2, 2), N3, 3);
-end
-
-function out = ifft3(x)
-% Function that computes the inverse 3D Fourier transform of the input array x,
-% along the first three dimensions.
-%
-% Input parameters:
-%   --x:   4D array of size [N1, N2, N3, Nc], where N1, N2, N3 are spatial
-%          dimensions and Nc is the number of channels.
-%
-% Output parameters:
-%   --out: 4D array of the same size as x, containing the inverse 3D Fourier
-%          transform along the first three dimensions.
-%
-out = ifft(ifft(ifft(x, [], 1), [], 2), [], 3);
-end
-
-function out = ifft3_zp(x, Nz)
-% Function that computes the inverse 3D Fourier transform of the input array x,
-% along the first three dimensions, with optional size specification (zero-padding).
-%
-% Input parameters:
-%   --x:   4D array of size [N1, N2, N3, Nc], where N1, N2, N3 are spatial
-%          dimensions and Nc is the number of channels.
-%   --Nz:  1x3 array specifying the size of each dimension for the inverse FFT.
-%
-% Output parameters:
-%   --out: 4D array of the same size as x (with specified Nz), containing the
-%          inverse 3D Fourier transform along the first three dimensions.
-%
-out = ifft(ifft(ifft(x, Nz(1), 1), Nz(2), 2), Nz(3), 3);
-end
 
 
 

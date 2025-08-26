@@ -1,4 +1,4 @@
-function PhP = ChC_FFT_convolutions_3D(X, N1, N2, N3, Nc, tau, pad, kernel_shape)
+function ChC = ChC_FFT_convolutions_3D(X, varargin)
 
 % Function that directly calculates the matrix C'*C using an FFT-based
 % approach.
@@ -27,13 +27,30 @@ function PhP = ChC_FFT_convolutions_3D(X, N1, N2, N3, Nc, tau, pad, kernel_shape
 % Output parameters:
 %   --PhP:          Matrix C'*C calculated using the FFT-based approach.
 
-[in1, in2, in3] = ndgrid(-tau:tau, -tau:tau, -tau:tau);
+p = inputParser;
 
-if kernel_shape == 1
-    mask = (in1.^2 + in2.^2 + in3.^2 <= tau^2);
+p.addRequired('X', @(x) isnumeric(x) && ndims(x) == 4);
+
+p.addParameter('tau', 3, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+p.addParameter('pad', 1, @(x) isnumeric(x) && isscalar(x) && (x == 0 || x == 1));
+p.addParameter('kernel_shape', 1, @(x) isnumeric(x) && isscalar(x) && (x == 0 || x == 1));
+
+if isempty(varargin)
+    parse(p, X);
+else
+    parse(p, X, varargin{:});
+end
+
+[N1, N2, N3, Nc] = size(p.Results.X);
+
+[in1, in2, in3] = ndgrid(-p.Results.tau:p.Results.tau, -p.Results.tau:p.Results.tau, -p.Results.tau:p.Results.tau);
+
+if p.Results.kernel_shape == 1
+    mask = (in1.^2 + in2.^2 + in3.^2 <= p.Results.tau^2);
 else
     mask = true(size(in1));
 end
+
 i = find(mask);
 
 in1 = in1(i)';
@@ -42,10 +59,12 @@ in3 = in3(i)';
 
 patchSize = numel(in1);
 
+pad = 1;
+
 if pad == 1
-    N1n = 2^(ceil(log2(N1+2*tau))); 
-    N2n = 2^(ceil(log2(N2+2*tau)));
-    N3n = 2^(ceil(log2(N3+2*tau)));
+    N1n = 2^(ceil(log2(N1+2*p.Results.tau))); 
+    N2n = 2^(ceil(log2(N2+2*p.Results.tau)));
+    N3n = 2^(ceil(log2(N3+2*p.Results.tau)));
 else
     N1n = N1;
     N2n = N2;
@@ -54,18 +73,17 @@ end
 
 inds = sub2ind([N1n,N2n,N3n], floor(N1n/2)+1-in1+in1', floor(N2n/2)+1-in2+in2',  floor(N3n/2)+1-in3+in3');
 
-[n2,n1,n3] = meshgrid([-floor(N2n/2):floor(N2n/2)-utils.even_pisco(N2n/2)]/N2n, [-floor(N1n/2):floor(N1n/2)-utils.even_pisco(N1n/2)]/N1n, [-floor(N3n/2):floor(N3n/2)-utils.even_pisco(N3n/2)]/N3n);
-phaseKernel = exp(complex(0,-2*pi)*(n1*(ceil(N1n/2)+tau)+n2*(ceil(N2n/2)+tau)+n3*(ceil(N3n/2)+tau)));
-cphaseKernel = exp(complex(0,-2*pi)*(n1*(ceil(N1n/2))+n2*(ceil(N2n/2))+n3*(ceil(N3n/2))));
+x = fft(fft(fft(p.Results.X, N1n, 1), N2n, 2), N3n, 3);
 
-x = fft(fft(fft(X,N1n,1),N2n,2),N3n,3).*phaseKernel;
-
-PhP = zeros(patchSize, patchSize, Nc,  Nc); 
+ChC = zeros(patchSize, patchSize, Nc, Nc);
 for q = 1:Nc
-    b= reshape(ifft3(conj(x(:,:,:,q:Nc)).*x(:,:,:,q).*cphaseKernel),[],Nc-q+1); 
-    PhP(:,:,q:Nc,q) = reshape(b(inds,:),patchSize,patchSize,Nc-q+1);
-    PhP(:,:,q,q+1:Nc) = permute(conj(PhP(:,:,q+1:Nc,q)),[2,1,4,3]);
+    A = conj(x(:,:,:,q:Nc)) .* x(:,:,:,q);             % correlations using x to mirror old numerics
+    R = utils.ifft3(A);                                 % inverse 3D FFT
+    R = circshift(R, [ceil(N1n/2), ceil(N2n/2), ceil(N3n/2)]); % center zero-lag
+    b = reshape(R, [], Nc - q + 1);
+    ChC(:, :, q:Nc, q) = reshape(b(inds, :), patchSize, patchSize, Nc - q + 1);
+    ChC(:, :, q, q+1:Nc) = permute(conj(ChC(:, :, q+1:Nc, q)), [2, 1, 4, 3]);
 end
-PhP = reshape(permute(PhP,[1,3,2,4]), patchSize*Nc, patchSize*Nc);
+ChC = reshape(permute(ChC, [1, 3, 2, 4]), patchSize * Nc, patchSize * Nc);
 
 end

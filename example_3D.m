@@ -90,33 +90,33 @@ threshold = 0.08;                      % Threshold for C-matrix singular values.
 
 M = 30;                                % Number of iterations for Power Iteration. Default: 30
 
-PowerIteration_flag_convergence = [];  % Binary variable. 1 = convergence error is displayed 
+PowerIteration_flag_convergence = 1;  % Binary variable. 1 = convergence error is displayed 
                                        % for Power Iteration if the method has not converged 
                                        % for some voxels after the iterations indicated by 
                                        % the user. In this example it corresponds to an empty 
                                        % array which indicates that the default value is 
                                        % being used. Default: 1
 
-PowerIteration_flag_auto = [];         % Binary variable. 1 = Power Iteration is run until
+PowerIteration_flag_auto = 0;         % Binary variable. 1 = Power Iteration is run until
                                        % convergence in case the number of iterations
                                        % indicated by the user is too small. In this example
                                        % this variable corresponds to an empty array which
                                        % indicates that the default value is being used.
                                        % Default: 0
 
-interp_zp = [];                        % Amount of zero-padding to create the low-resolution grid 
+interp_zp = 24;                        % Amount of zero-padding to create the low-resolution grid 
                                        % if FFT-interpolation is used. In this example it
                                        % corresponds to an empty array which indicates that the
                                        % default value is being used. Default: 24
 
-gauss_win_param = [];                  % Parameter for the Gaussian apodizing window used to 
+gauss_win_param = 100;                  % Parameter for the Gaussian apodizing window used to 
                                        % generate the low-resolution image in the FFT-based 
                                        % interpolation approach. This is the reciprocal of the 
                                        % standard deviation of the Gaussian window. In this 
                                        % example it corresponds to an empty array which indicates 
                                        % that the default value is being used. Default: 100
 
-sketch_dim = [];                       % Dimension of the sketch matrix used to calculate a
+sketch_dim = 500;                       % Dimension of the sketch matrix used to calculate a
                                        % basis for the nullspace of the C matrix using a sketched SVD. 
                                        % In this example it corresponds to an empty array which indicates
                                        % that the default value is being used. Default: 500
@@ -157,21 +157,29 @@ verbose = 1;                           % Binary variable. 1 = PISCO information 
 
 %% PISCO estimation
 
-if isempty(which('PISCO_senseMaps_estimation'))
+if isempty(which('PISCO_sensitivity_maps_estimation'))
     error(['The function PISCO_senseMaps_estimation.m is not found in your MATLAB path. ' ...
            'Please ensure that all required files are available and added to the path.']);
 end
 
-[senseMaps, eigenValues] = PISCO_senseMaps_estimation( ...
-    kCal, dim_sens, ...                          % Data and output size
-    tau, threshold, kernel_shape, ...            % Kernel and threshold parameters
-    FFT_nullspace_C_calculation, ...             % FFT nullspace calculation flag
-    PowerIteration_G_nullspace_vectors, ...      % Power Iteration flag
-    M, PowerIteration_flag_convergence, ...      % Power Iteration params
-    PowerIteration_flag_auto, ...                % Power Iteration auto flag
-    FFT_interpolation, interp_zp, gauss_win_param, ... % Interpolation params
-    sketched_SVD, sketch_dim, visualize_C_matrix_sv, ...                % SVD/sketching params
-    verbose ...                                  % Verbosity
+[senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation( ...
+    kCal, ...
+    dim_sens, ...                          % Data and output size
+    'tau', tau, ...
+    'threshold', threshold, ...
+    'kernel_shape', kernel_shape, ...            % Kernel and threshold parameters
+    'FFT_nullspace_C_calculation', FFT_nullspace_C_calculation, ...             % FFT nullspace calculation flag
+    'PowerIteration_G_nullspace_vectors', PowerIteration_G_nullspace_vectors, ...      % Power Iteration flag
+    'M', M, ...
+    'PowerIteration_flag_convergence', PowerIteration_flag_convergence, ...      % Power Iteration params
+    'PowerIteration_flag_auto', PowerIteration_flag_auto, ...                % Power Iteration auto flag
+    'FFT_interpolation', FFT_interpolation, ...
+    'interp_zp', interp_zp, ...
+    'gauss_win_param', gauss_win_param, ... % Interpolation params
+    'sketched_SVD', sketched_SVD, ...
+    'sketch_dim', sketch_dim, ...
+    'visualize_C_matrix_sv', visualize_C_matrix_sv, ... % SVD/sketching params
+    'verbose', verbose ...                                  % Verbosity
 );
 
 %% Support mask created from the last eigenvalues of the G matrices 

@@ -97,8 +97,8 @@ numCenters = size(centers, 1);
 % Ensure in1, in2 are row vectors for repmat operation
 in1_row = in1(:)';  % Force row vector
 in2_row = in2(:)';  % Force row vector
-I_all = repmat(centers(:,1), 1, patchSize) + repmat(in1_row, numCenters, 1);
-J_all = repmat(centers(:,2), 1, patchSize) + repmat(in2_row, numCenters, 1);
+I_all = centers(:,1) + in1_row; % implicit expansion -> [numCenters x patchSize]
+J_all = centers(:,2) + in2_row; % implicit expansion -> [numCenters x patchSize]
 
 % Convert to linear indices and extract data
 ind_all = sub2ind([N1,N2], I_all, J_all);

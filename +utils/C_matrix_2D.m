@@ -58,8 +58,8 @@ function C = C_matrix_2D(x, varargin)
 
     in1_row = in1(:)';
     in2_row = in2(:)';
-    I_all = repmat(centers(:, 1), 1, patchSize) + repmat(in1_row, numCenters, 1);
-    J_all = repmat(centers(:, 2), 1, patchSize) + repmat(in2_row, numCenters, 1);
+    I_all = centers(:,1) + in1_row; 
+    J_all = centers(:,2) + in2_row; 
 
     ind_all = sub2ind([N1, N2], I_all, J_all);
 
