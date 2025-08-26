@@ -1,4 +1,4 @@
-function result = C_matrix_2D(x, N1, N2, Nc, tau, kernel_shape)
+function C = C_matrix_2D(x, varargin)
 
 % Function that calculates the C matrix.
 %
@@ -20,52 +20,53 @@ function result = C_matrix_2D(x, N1, N2, Nc, tau, kernel_shape)
 %   --kernel_shape: Binary variable. 0 = rectangular kernel, 1 = ellipsoidal
 %                   kernel. Default: 1.
 
-    x = reshape(x,N1*N2,Nc);
+    p = inputParser;
 
-    [in1,in2] = meshgrid(-tau:tau,-tau:tau);
-    
-    if kernel_shape == 1
-        i = find(in1.^2+in2.^2<=tau^2);
+    p.addRequired('x', @(x) isnumeric(x) && ndims(x) == 3);
+
+    p.addParameter('tau', 3, @(x) isnumeric(x) && isscalar(x));
+    p.addParameter('kernel_shape', 1, @(x) isnumeric(x) && isscalar(x) && (x == 0 || x == 1));
+
+    if isempty(varargin)
+        parse(p, x);
     else
-        i = [1:numel(in1)]; 
-    end     
-
-    in1 = in1(i)';
-    in2 = in2(i)';
-
-    patchSize = numel(in1);
-
-    result = zeros((N1-2*tau-utils.even_pisco(N1))*(N2-2*tau-utils.even_pisco(N2)),patchSize*Nc,'like',x);
-
-    k = 0;
-    for i = tau+1+utils.even_pisco(N1):N1-tau
-        for j = tau+1+utils.even_pisco(N2):N2-tau
-            k = k+1;
-            ind = sub2ind([N1,N2],i+in1,j+in2);
-            result(k,:) = utils.vect(x(ind,:));
-        end
+        parse(p, x, varargin{:});
     end
 
-    % % Fully vectorized approach - create all indices at once
-    % i_centers = tau+1+utils.even_pisco(N1):N1-tau;
-    % j_centers = tau+1+utils.even_pisco(N2):N2-tau;
-    % [J_centers, I_centers] = meshgrid(j_centers, i_centers);
-    % centers = [I_centers(:), J_centers(:)];  % All center positions as [i,j] pairs
+    [N1, N2, Nc] = size(p.Results.x);
 
-    % % Create all patch offsets for all centers simultaneously
-    % numCenters = size(centers, 1);
-    % I_all = repmat(centers(:,1), 1, patchSize) + repmat(in1', numCenters, 1);
-    % J_all = repmat(centers(:,2), 1, patchSize) + repmat(in2', numCenters, 1);
+    x = reshape(x, N1 * N2, Nc);
 
-    % % Convert to linear indices and extract data
-    % ind_all = sub2ind([N1,N2], I_all, J_all);
-    % Extract all patches
-    % x_patches = x(ind_all, :);  % Shape: [numCenters*patchSize, Nc]
+    [in1, in2] = meshgrid(-p.Results.tau:p.Results.tau, -p.Results.tau:p.Results.tau);
+    if p.Results.kernel_shape == 1
+        i = find(in1.^2 + in2.^2 <= p.Results.tau^2);
+    else
+        i = (1:numel(in1));
+    end
+    in1 = in1(i(:));
+    in2 = in2(i(:));
 
-    % % Reshape to [numCenters, patchSize, Nc]
-    % x_reshaped = reshape(x_patches, [numCenters, patchSize, Nc]);
+    patchSize = numel(i);
 
-    % % Flatten each patch in the same way as utils.vect (column-wise)
-    % result = reshape(x_reshaped, [numCenters, patchSize*Nc]);
+    i_centers = p.Results.tau + 1 + utils.even_pisco(N1):N1 - p.Results.tau;
+    j_centers = p.Results.tau + 1 + utils.even_pisco(N2):N2 - p.Results.tau;
+
+    [I_centers, J_centers] = meshgrid(i_centers, j_centers);
+    centers = [I_centers(:), J_centers(:)];
+
+    numCenters = size(centers, 1);
+
+    in1_row = in1(:)';
+    in2_row = in2(:)';
+    I_all = repmat(centers(:, 1), 1, patchSize) + repmat(in1_row, numCenters, 1);
+    J_all = repmat(centers(:, 2), 1, patchSize) + repmat(in2_row, numCenters, 1);
+
+    ind_all = sub2ind([N1, N2], I_all, J_all);
+
+    x_selected = x(ind_all, :);
+
+    x_patches = reshape(x_selected, numCenters, patchSize, Nc);
+
+    C = reshape(x_patches, numCenters, patchSize * Nc);
 
 end

@@ -134,16 +134,157 @@ fprintf('Total operations: %d patch extractions\n', numCenters);
 fprintf('Original throughput: %.0f patches/second\n', numCenters / time_original);
 fprintf('Vectorized throughput: %.0f patches/second\n', numCenters / time_vectorized);
 
+%% C using the function
+
+opts_C_matrix = struct( ...
+    'tau', tau,...
+    'kernel_shape', kernel_shape...
+);
+
+fn = fieldnames(opts_C_matrix);
+fv = struct2cell(opts_C_matrix);
+nv = [fn.'; fv.'];
+nv = nv(:).';
+
+result_fun = utils.C_matrix_2D(kCal, nv{:});
+
+%% Comparing result_fun vs result_new
+
+fprintf('\n=== C MATRIX VERIFICATION ===\n');
+fprintf('Are result_fun and result_new equal? %s\n', mat2str(isequal(result_fun, result_new)));
+fprintf('Maximum absolute difference: %e\n', max(abs(result_fun(:) - result_new(:))));
+
 %% Create C-matrix and C'C
 
 C = result_new; 
 clear result_new
 
-ChC = C'*C;
+%ChC = C'*C;
+
+%% ChC using FFT-based convolutions (previous implementation)
+
+[N1, N2 , Nc] = size(kCal);
+
+[in1,in2] = meshgrid(-tau:tau,-tau:tau);
+if kernel_shape == 1
+    i = find(in1.^2+in2.^2<=tau^2);
+else
+    i = [1:numel(in1)];
+end
+in1 = in1(i(:));
+in2 = in2(i(:));
+
+patchSize = numel(i);
+
+pad = 1;
+
+if pad
+    N1n = 2^(ceil(log2(N1+2*tau))); 
+    N2n = 2^(ceil(log2(N2+2*tau)));
+else
+    N1n = N1;
+    N2n = N2;
+end
+
+inds = sub2ind([N1n,N2n], floor(N1n/2)+1-in1+in1', floor(N2n/2)+1-in2+in2');
+
+[n2,n1] = meshgrid([-floor(N2n/2):floor(N2n/2)-utils.even_pisco(N2n/2)]/N2n,[-floor(N1n/2):floor(N1n/2)-utils.even_pisco(N1n/2)]/N1n);
+phaseKernel = exp(complex(0,-2*pi)*(n1*(ceil(N1n/2)+tau)+n2*(ceil(N2n/2)+tau)));
+cphaseKernel = exp(complex(0,-2*pi)*(n1*(ceil(N1n/2))+n2*(ceil(N2n/2))));
+
+x = fft2(kCal, N1n, N2n) .* phaseKernel;
+
+tic; % timing: previous implementation
+ChC = zeros(patchSize, patchSize, Nc, Nc);
+for q = 1:Nc
+    b = reshape(ifft2(conj(x(:, :, q:Nc)) .* x(:, :, q) .* cphaseKernel), [], Nc - q + 1);
+    ChC(:, :, q:Nc, q) = reshape(b(inds, :), patchSize, patchSize, Nc - q + 1);
+    ChC(:, :, q, q+1:Nc) = permute(conj(ChC(:, :, q+1:Nc, q)), [2, 1, 4, 3]);
+end
+ChC = reshape(permute(ChC, [1, 3, 2, 4]), patchSize * Nc, patchSize * Nc);
+time_ChC_old = toc;
+
+%% ChC FFT-based convolutions (new implementation without phase kernels)
+
+% Idea: use centered circular correlation via fftshift(ifft2(...)) so that
+% zero-lag sits at the center. Then sample the patch lags directly with 'inds'.
+
+tic; % timing: new implementation
+F = fft2(kCal, N1n, N2n);                  % per-coil FFTs
+ChC_new = zeros(patchSize, patchSize, Nc, Nc);
+for q = 1:Nc
+    R = ifft2(conj(F(:, :, q:Nc)) .* F(:, :, q));                  % cross-correlation maps (zero-lag at (1,1))
+    R = circshift(R, [ceil(N1n/2), ceil(N2n/2)]);                  % center zero-lag (matches cphaseKernel shift)
+    b = reshape(R, [], Nc - q + 1);
+    ChC_new(:, :, q:Nc, q) = reshape(b(inds, :), patchSize, patchSize, Nc - q + 1);
+    ChC_new(:, :, q, q+1:Nc) = permute(conj(ChC_new(:, :, q+1:Nc, q)), [2, 1, 4, 3]);
+end
+ChC_new = reshape(permute(ChC_new, [1, 3, 2, 4]), patchSize * Nc, patchSize * Nc);
+time_ChC_new = toc;
+
+%% Verification: numerical equivalence ChC vs ChC_new
+
+fprintf('\n=== ChC VS ChC_new VERIFICATION ===\n');
+fprintf('ChC size:     [%d, %d]\n', size(ChC));
+fprintf('ChC_new size: [%d, %d]\n', size(ChC_new));
+
+if ~isequal(size(ChC), size(ChC_new))
+    warning('Size mismatch between ChC and ChC_new. Comparison may be invalid.');
+end
+
+max_abs_err = max(abs(ChC(:) - ChC_new(:)));
+rel_err = max_abs_err / max(1e-12, max(abs(ChC(:))));
+tolerance = 1e-10;
+
+fprintf('Max absolute error: %.3e\n', max_abs_err);
+fprintf('Max relative error: %.3e\n', rel_err);
+fprintf('Equal within tol (%.0e): %s\n', tolerance, mat2str(max_abs_err < tolerance));
+
+%% Performance comparison
+
+fprintf('\n=== ChC PERFORMANCE COMPARISON ===\n');
+fprintf('Previous impl time: %.6f s\n', time_ChC_old);
+fprintf('New impl time:      %.6f s\n', time_ChC_new);
+if time_ChC_new > 0
+    fprintf('Speedup (old/new):  %.2fx\n', time_ChC_old / time_ChC_new);
+end
+
+%% ChC using function
+
+opts_ChC_matrix = struct( ...
+    'tau', tau,...
+    'pad', pad,...
+    'kernel_shape', kernel_shape...
+);
+
+fn = fieldnames(opts_ChC_matrix);
+fv = struct2cell(opts_ChC_matrix);
+nv = [fn.'; fv.'];
+nv = nv(:).';
+
+ChC_fun = utils.ChC_FFT_convolutions_2D(kCal, nv{:});
+
+%% Comparison ChC vs ChC_fun
+
+fprintf('\n=== ChC VS ChC_fun VERIFICATION ===\n');
+fprintf('ChC size:     [%d, %d]\n', size(ChC));
+fprintf('ChC_fun size: [%d, %d]\n', size(ChC_fun));
+
+if ~isequal(size(ChC), size(ChC_fun))
+    warning('Size mismatch between ChC and ChC_fun. Comparison may be invalid.');
+end
+
+max_abs_err = max(abs(ChC(:) - ChC_fun(:)));
+rel_err = max_abs_err / max(1e-12, max(abs(ChC(:))));
+tolerance = 1e-10;
+
+fprintf('Max absolute error: %.3e\n', max_abs_err);
+fprintf('Max relative error: %.3e\n', rel_err);
+fprintf('Equal within tol (%.0e): %s\n', tolerance, mat2str(max_abs_err < tolerance));
 
 %% Nullspace vectors
 
-[~,Sc,U] = svd(ChC,'econ');
+[~,Sc,U] = svd(ChC_fun,'econ');
 clear ChC
 sing = diag(Sc);
 clear Sc
@@ -177,7 +318,7 @@ U = U(:, Nvect+1:end);
 
 if kernel_shape == 0 
 
-    ind = [1:numel(in1)]'; 
+    ind = (1:numel(in1)).'; 
     
 else 
     
@@ -193,7 +334,7 @@ patchSize = numel(in1);
 in1 = in1(:);
 in2 = in2(:);
 
-eind = [patchSize:-1:1]';
+eind = (patchSize:-1:1).';
 
 G = zeros(2*(2*tau+1)* 2*(2*tau+1),Nc,Nc);
 
@@ -214,7 +355,7 @@ clear W
 N1_g = N1;
 N2_g = N2;
 
-[n2,n1] = meshgrid([-N2_g/2:N2_g/2-1]/N2_g,[-N1_g/2:N1_g/2-1]/N1_g);
+[n2,n1] = meshgrid((-N2_g/2:N2_g/2-1)/N2_g, (-N1_g/2:N1_g/2-1)/N1_g);
 phaseKernel = exp(complex(0,-2*pi)*(n1*(N1_g-2*tau-1)+n2*(N2_g-2*tau-1)));
 
 % Store spatial domain G before FFT transformation for comparison

@@ -47,26 +47,53 @@ function U = nullspace_vectors_C_matrix_2D(kCal, varargin)
 p = inputParser;
 
 p.addRequired('kCal', @(x) isnumeric(x) && ndims(x) == 3);
-p.addRequired('tau', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('threshold', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('kernel_shape', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('FFT_nullspace_C_calculation', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('sketched_SVD', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('sketch_dim', @(x) isnumeric(x) && isscalar(x));
-p.addRequired('visualize_C_matrix_sv', @(x) isnumeric(x) && isscalar(x));
 
-parse(p, kCal, varargin{:});
+p.addParameter('tau', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('threshold', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('kernel_shape', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('FFT_nullspace_C_calculation', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('pad', 1, @(x) isnumeric(x) && isscalar(x) && (x == 0 || x == 1));
+p.addParameter('sketched_SVD', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('sketch_dim', @(x) isnumeric(x) && isscalar(x));
+p.addParameter('visualize_C_matrix_sv', @(x) isnumeric(x) && isscalar(x));
 
-if p.Results.FFT_nullspace_C_calculation == 0
+if isempty(varargin)
+    parse(p, kCal);
+else
+    parse(p, kCal, varargin{:});
+end
 
-    C = utils.C_matrix_2D(kCal(:), size(kCal,1), size(kCal,2), size(kCal,3), p.Results.tau, p.Results.kernel_shape);
+if p.Results.FFT_nullspace_C_calculation == 0 
+
+    opts_C_matrix = struct( ...
+    'tau', p.Results.tau,...
+    'kernel_shape', p.Results.kernel_shape...
+    );
+
+    fn = fieldnames(opts_C_matrix);
+    fv = struct2cell(opts_C_matrix);
+    nv = [fn.'; fv.'];
+    nv = nv(:).';
+
+    C = utils.C_matrix_2D(p.Results.kCal, nv{:});
 
     ChC = C'*C;
     clear C
     
 else
 
-    ChC = utils.ChC_FFT_convolutions_2D(kCal, size(kCal,1), size(kCal,2), size(kCal,3), p.Results.tau, 1, p.Results.kernel_shape);
+    opts_ChC_matrix = struct( ...
+    'tau', p.Results.tau,...
+    'pad', p.Results.pad,...
+    'kernel_shape', p.Results.kernel_shape...
+    );
+
+    fn = fieldnames(opts_ChC_matrix);
+    fv = struct2cell(opts_ChC_matrix);
+    nv = [fn.'; fv.'];
+    nv = nv(:).';
+
+    ChC = utils.ChC_FFT_convolutions_2D(p.Results.kCal, nv{:});
 
 end
 

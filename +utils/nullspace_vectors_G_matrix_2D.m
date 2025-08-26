@@ -30,6 +30,7 @@ p.addRequired('N1', @(x) isnumeric(x) && isscalar(x));
 p.addRequired('N2', @(x) isnumeric(x) && isscalar(x));
 p.addRequired('G', @(x) isnumeric(x) && ndims(x) == 4);
 p.addRequired('patchSize', @(x) isnumeric(x) && isscalar(x));
+
 p.addParameter('PowerIteration_G_nullspace_vectors', 1, @(x) isnumeric(x) && isscalar(x));
 p.addParameter('M', 30, @(x) isnumeric(x) && isscalar(x));
 p.addParameter('PowerIteration_flag_convergence', 1, @(x) isnumeric(x) && isscalar(x));
