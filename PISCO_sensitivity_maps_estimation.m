@@ -248,23 +248,23 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     t_G_matrices = tic;
 
-    if flag_3D == 0
-
-        opts_G_matrices_2D = struct( ...
+    opts_G_matrices = struct( ...
             'kernel_shape', p.Results.kernel_shape, ...
             'FFT_interpolation', p.Results.FFT_interpolation, ...
             'interp_zp', p.Results.interp_zp, ...
             'sketched_SVD', p.Results.sketched_SVD ...
         );
 
-        fn = fieldnames(opts_G_matrices_2D);
-        fv = struct2cell(opts_G_matrices_2D);
+        fn = fieldnames(opts_G_matrices);
+        fv = struct2cell(opts_G_matrices);
         nv = [fn.'; fv.'];
         nv = nv(:).';
 
+    if flag_3D == 0
+
         G = utils.G_matrices_2D(kCal, dim_sens(1), dim_sens(2), p.Results.tau, U, nv{:});
     else
-        G = G_matrices_3D(kCal, dim_sens(1), dim_sens(2), dim_sens(3), p.Results.tau, U, p.Results.kernel_shape, p.Results.FFT_nullspace_C_calculation, p.Results.FFT_interpolation, p.Results.interp_zp, p.Results.sketched_SVD);
+        G = utils.G_matrices_3D(kCal, dim_sens(1), dim_sens(2), dim_sens(3), p.Results.tau, U, p.Results.FFT_nullspace_C_calculation, nv{:});
     end
 
     t_G_matrices = toc(t_G_matrices);
@@ -363,161 +363,6 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 end
 
 %% Extra functions
-
-function G = G_matrices_3D(kCal, N1, N2, N3, tau, U, kernel_shape, FFT_nullspace_C_calculation, FFT_interpolation, interp_zp, sketched_SVD)
-
-% Function that calculates the G(x) matrices directly without calculating
-% H(x) first.
-%
-% Input parameters:
-%   --kCal:                        N1_cal x N2_cal x N3_cal x Nc block of calibration data,
-%                                  where N1_cal, N2_cal, and N3_cal are the dimensions of a
-%                                  rectangular block of Nyquist-sampled k-space, and Nc is the
-%                                  number of channels in the array.
-%
-%   --N1, N2, N3:                  The desired dimensions of the output sensitivity
-%                                  matrices.
-%
-%   --tau:                         Parameter (in Nyquist units) that determines the
-%                                  size of the k-space kernel. For a rectangular
-%                                  kernel, the size corresponds to (2*tau+1) x
-%                                  (2*tau+1) x (2*tau+1). For an ellipsoidal kernel, it
-%                                  corresponds to the radius of the associated
-%                                  neighborhood. Default: 3.
-%
-%   --U:                           Matrix whose columns correspond to the nullspace
-%                                  vectors of the C matrix.
-%
-%   --kernel_shape:                Binary variable. 0 = rectangular kernel, 1 = ellipsoidal
-%                                  kernel. Default: 1.
-%
-%   --FFT_nullspace_C_calculation: Binary variable. 1 = FFT-based calculation of nullspace
-%                                  vectors of C by calculating C'*C directly (instead of
-%                                  calculating C first). Default: 1.
-%
-%   --FFT_interpolation:           Binary variable. 0 = no interpolation is used,
-%                                  1 = FFT-based interpolation is used. Default: 1.
-%
-%   --interp_zp:                   Amount of zero-padding to create the low-resolution
-%                                  grid if FFT-interpolation is used. The low-resolution
-%                                  grid has dimensions (N1_cal + interp_zp) x
-%                                  (N2_cal + interp_zp) x (N3_cal + interp_zp) x Nc. Default: 24.
-%
-%   --sketched_SVD:                Binary variable. 1 = sketched SVD is used to calculate
-%                                  a basis for the nullspace of the C matrix. Default: 1.
-%
-% Output parameters:
-%   --G:                           N1 x N2 x N3 x Nc x Nc array where G(i,j,k,:,:) 
-%                                  corresponds to the G matrix at the (i,j,k) spatial
-%                                  location.
-
-if nargin < 5 || not(isnumeric(tau)) || not(numel(tau))
-    tau = 3;
-end
-
-if nargin < 7 || not(isnumeric(kernel_shape)) || not(numel(kernel_shape))
-    kernel_shape = 1;
-end
-
-if nargin < 8 || not(isnumeric(FFT_nullspace_C_calculation)) || not(numel(FFT_nullspace_C_calculation))
-    FFT_nullspace_C_calculation = 1;
-end
-
-if nargin < 9 || not(isnumeric(FFT_interpolation)) || not(numel(FFT_interpolation))
-    FFT_interpolation = 1;
-end
-
-if nargin < 10 || not(isnumeric(interp_zp)) || not(numel(interp_zp))
-    interp_zp = 24;
-end
-
-if nargin < 11 || not(isnumeric(sketched_SVD)) || not(numel(sketched_SVD))
-    sketched_SVD = 1;
-end
-
-[N1_cal, N2_cal, N3_cal, Nc] = size(kCal);
-
-[in1, in2, in3] = ndgrid(-tau:tau, -tau:tau, -tau:tau);
-
-if kernel_shape == 1
-    mask = (in1.^2 + in2.^2 + in3.^2 <= tau^2);
-else
-    mask = true(size(in1));
-end
-i = find(mask); 
-
-in1 = in1(i)';
-in2 = in2(i)';
-in3 = in3(i)';
-
-patchSize = numel(in1);
-
-in1 = in1(:);
-in2 = in2(:);
-in3 = in3(:);
-
-eind = [patchSize:-1:1]';
-
-G = zeros(2*(2*tau+1)* 2*(2*tau+1)* 2*(2*tau+1),Nc,Nc);
-
-if sketched_SVD == 0
-    W = U*U';
-else
-    W = eye(size(U, 1)) - U*U';
-end
-
-clear U;
-W = permute(reshape(W,patchSize,Nc,patchSize,Nc),[1,2,4,3]);
-
-for s = 1:patchSize 
-    G(sub2ind([2*(2*tau+1),2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s), 2*tau+1+1+in3(eind)+in3(s)),:,:) = ...
-        G(sub2ind([2*(2*tau+1),2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s),2*tau+1+1+in3(eind)+in3(s)),:,:)  + W(:,:,:,s);
-end
-
-clear W
-
-if FFT_interpolation == 0
-    
-    N1_g = N1;
-    N2_g = N2;
-    N3_g = N3;
-    
-else
-  
-    if N1_cal <= N1 - interp_zp
-        N1_g = N1_cal + interp_zp;
-    else   
-        N1_g = N1_cal;
-    end
-
-    if N2_cal <= N2 - interp_zp
-        N2_g = N2_cal + interp_zp;
-    else   
-        N2_g = N2_cal;
-    end
-
-    if N3_cal <= N3 - interp_zp
-        N3_g = N3_cal + interp_zp;
-    else   
-        N3_g = N3_cal;
-    end
-    
-end
-
-[n2,n1,n3] = meshgrid([-N2_g/2:N2_g/2-1]/N2_g,[-N1_g/2:N1_g/2-1]/N1_g, [-N3_g/2:N3_g/2-1]/N3_g);
-phaseKernel = -exp(complex(0,-2*pi)*(n1*(N1_g-2*tau-1)+n2*(N2_g-2*tau-1)+n3*(N3_g-2*tau-1)));
-
-G = utils.fft3(conj(reshape(G,2*(2*tau+1),2*(2*tau+1),2*(2*tau+1),Nc,Nc)),N1_g,N2_g,N3_g).*phaseKernel; 
-
-G = fftshift(fftshift(fftshift(G,1),2),3);
-
-if FFT_nullspace_C_calculation == 1
-    % If the nullspace vectors of the C matrix were calculated using an FFT-based
-    % approach, the G matrices are flipped in all three dimensions.
-    G = flip(flip(flip(G, 2), 1), 3);
-end 
-
-end
 
 function [senseMaps, eigenVal] = nullspace_vectors_G_matrix_3D(kCal, N1, N2, N3, ...
     G, patchSize, PowerIteration_G_nullspace_vectors, M, PowerIteration_flag_convergence, PowerIteration_flag_auto, ...

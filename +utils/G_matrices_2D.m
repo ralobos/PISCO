@@ -97,15 +97,11 @@ base_col_indices = offset + in2(eind);
 target_row_mat = base_row_indices + in1.';
 target_col_mat = base_col_indices + in2.';
 idx = sub2ind([grid_size, grid_size], target_row_mat, target_col_mat);
-idx = idx(:);
 
-vals = reshape(permute(W, [1 4 2 3]), [], Nc * Nc);
-
-nchan = Nc * Nc;
-subs = [repmat(idx, nchan, 1), kron((1:nchan).', ones(numel(idx), 1))];
-acc = accumarray(subs, vals(:), [grid_size^2, nchan], @sum, 0);
-
-G = reshape(acc, grid_size^2, Nc, Nc);
+G = zeros(grid_size^2, Nc, Nc, 'like', W);
+for s = 1:patchSize
+    G(idx(:, s), :, :) = G(idx(:, s), :, :) + W(:, :, :, s);
+end
 
 clear W
 

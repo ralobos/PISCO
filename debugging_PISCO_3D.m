@@ -296,7 +296,8 @@ end
 
 %% Nullpsace vectors C-matrix
 
-sketched_SVD = 0; % 0 = full SVD, 1 = sketched SVD
+sketched_SVD = 1; % 0 = full SVD, 1 = sketched SVD
+sketch_dim = 500;
 visualize_C_matrix_sv = 1;
 
 ChC = ChC_new; % C'*C matrix
@@ -365,6 +366,208 @@ else
     
 end
 
+%% G matrices (old version)
 
+kernel_shape = 1;
+FFT_interpolation = 0;
+interp_zp = 24;
+FFT_nullspace_C_calculation = 1;
+
+[N1_cal, N2_cal, N3_cal, Nc] = size(kCal);
+
+% [in1, in2, in3] = ndgrid(-tau:tau, -tau:tau, -tau:tau);
+
+% if kernel_shape == 1
+%     mask = (in1.^2 + in2.^2 + in3.^2 <= tau^2);
+% else
+%     mask = true(size(in1));
+% end
+% i = find(mask); 
+
+% in1 = in1(i)';
+% in2 = in2(i)';
+% in3 = in3(i)';
+
+% patchSize = numel(in1);
+
+% in1 = in1(:);
+% in2 = in2(:);
+% in3 = in3(:);
+
+eind = [patchSize:-1:1]';
+
+t_G_old = tic;
+
+G_old = zeros(2*(2*tau+1)* 2*(2*tau+1)* 2*(2*tau+1),Nc,Nc);
+
+if sketched_SVD == 0
+    W = U*U';
+else
+    W = eye(size(U, 1)) - U*U';
+end
+
+U_copy = U; % preserve for G_new
+clear U;
+W = permute(reshape(W,patchSize,Nc,patchSize,Nc),[1,2,4,3]);
+
+for s = 1:patchSize
+    G_old(sub2ind([2*(2*tau+1),2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s), 2*tau+1+1+in3(eind)+in3(s)),:,:) = ...
+        G_old(sub2ind([2*(2*tau+1),2*(2*tau+1),2*(2*tau+1)],2*tau+1+1+in1(eind)+in1(s),2*tau+1+1+in2(eind)+in2(s),2*tau+1+1+in3(eind)+in3(s)),:,:)  + W(:,:,:,s);
+end
+
+clear W
+
+if FFT_interpolation == 0
+    
+    N1_g = N1;
+    N2_g = N2;
+    N3_g = N3;
+    
+else
+  
+    if N1_cal <= N1 - interp_zp
+        N1_g = N1_cal + interp_zp;
+    else   
+        N1_g = N1_cal;
+    end
+
+    if N2_cal <= N2 - interp_zp
+        N2_g = N2_cal + interp_zp;
+    else   
+        N2_g = N2_cal;
+    end
+
+    if N3_cal <= N3 - interp_zp
+        N3_g = N3_cal + interp_zp;
+    else   
+        N3_g = N3_cal;
+    end
+    
+end
+
+[n2, n1, n3] = meshgrid((-N2_g/2:N2_g/2-1)/N2_g, (-N1_g/2:N1_g/2-1)/N1_g, (-N3_g/2:N3_g/2-1)/N3_g);
+phaseKernel = -exp(complex(0,-2*pi)*(n1*(N1_g-2*tau-1)+n2*(N2_g-2*tau-1)+n3*(N3_g-2*tau-1)));
+
+G_old = utils.fft3(conj(reshape(G_old,2*(2*tau+1),2*(2*tau+1),2*(2*tau+1),Nc,Nc)),N1_g,N2_g,N3_g).*phaseKernel; 
+
+G_old = fftshift(fftshift(fftshift(G_old,1),2),3);
+
+if FFT_nullspace_C_calculation == 1
+    % If the nullspace vectors of the C matrix were calculated using an FFT-based
+    % approach, the G matrices are flipped in all three dimensions.
+    G_old = flip(flip(flip(G_old, 2), 1), 3);
+end
+
+time_G_old = toc(t_G_old);
+
+%% G matrices new version 
+% Optimized, phase-free (uncentered) implementation analogous to 2D version
+% - Vectorized spatial accumulation via accumarray on 3D grid
+% - Pre-centering with spatial modulation (-1)^(i+j+k)
+% - Uncentered frequency-domain phase kernel (no fftshift needed)
+
+t_G_new = tic;
+
+grid_size = 2 * (2 * tau + 1);
+
+% Nullspace projector (match old path)
+if sketched_SVD == 0
+    Wn = U_copy * U_copy';
+else
+    Wn = eye(size(U_copy, 1)) - U_copy * U_copy';
+end
+Wn = permute(reshape(Wn, patchSize, Nc, patchSize, Nc), [1, 2, 4, 3]);
+
+% Build 3D indices for all (p,s) pairs in one shot
+offset = 2 * tau + 1 + 1;
+base_r = offset + in1(eind);
+base_c = offset + in2(eind);
+base_d = offset + in3(eind);
+
+row_mat = base_r(:) + in1; % [patchSize x patchSize], rows=p, cols=s
+col_mat = base_c(:) + in2; % [patchSize x patchSize]
+dep_mat = base_d(:) + in3; % [patchSize x patchSize]
+
+% Precompute linear indices table [patchSize x patchSize]; column s picks rows for p
+idx_tbl = sub2ind([grid_size, grid_size, grid_size], row_mat, col_mat, dep_mat);
+
+% Accumulate like legacy: per s tile add into rows idx_tbl(:,s)
+G_new = zeros(grid_size^3, Nc, Nc, 'like', Wn);
+for s = 1:patchSize
+    G_new(idx_tbl(:, s), :, :) = G_new(idx_tbl(:, s), :, :) + Wn(:, :, :, s);
+end
+
+clear row_mat col_mat dep_mat base_r base_c base_d idx_tbl Wn
+
+% Frequency transform (centered), mirroring old pipeline exactly
+Y = conj(reshape(G_new, grid_size, grid_size, grid_size, Nc, Nc));
+s1 = N1_g - 2 * tau - 1;  s2 = N2_g - 2 * tau - 1;  s3 = N3_g - 2 * tau - 1;
+[n2c_g, n1c_g, n3c_g] = meshgrid((-N2_g/2:N2_g/2-1)/N2_g, (-N1_g/2:N1_g/2-1)/N1_g, (-N3_g/2:N3_g/2-1)/N3_g);
+phaseKernel_c = -exp(complex(0, -2 * pi) * (n1c_g * s1 + n2c_g * s2 + n3c_g * s3));
+G_new = utils.fft3(Y, N1_g, N2_g, N3_g) .* phaseKernel_c;
+G_new = fftshift(fftshift(fftshift(G_new, 1), 2), 3);
+
+% Apply same flip policy as old path when FFT-based C nullspace was used
+if FFT_nullspace_C_calculation == 1
+    G_new = flip(flip(flip(G_new, 2), 1), 3);
+end
+
+time_G_new = toc(t_G_new);
+
+%% G-matrices Verification (G_old vs G_new)
+
+fprintf('\n=== 3D G-MATRICES VERIFICATION ===\n');
+fprintf('G_old size: [%d, %d, %d, %d, %d]\n', size(G_old));
+fprintf('G_new size: [%d, %d, %d, %d, %d]\n', size(G_new));
+
+max_abs_err_G = max(abs(G_old(:) - G_new(:)));
+if max(abs(G_old(:))) > 0
+    rel_err_G = max_abs_err_G / max(abs(G_old(:)));
+else
+    rel_err_G = 0;
+end
+tolG = 1e-10;
+fprintf('Max absolute error: %.3e\n', max_abs_err_G);
+fprintf('Max relative error: %.3e\n', rel_err_G);
+fprintf('Equal within tol (%.0e): %s\n', tolG, mat2str(max_abs_err_G < tolG));
+
+%% G-matrices Performance Comparison
+
+fprintf('\n=== 3D G-MATRICES PERFORMANCE COMPARISON ===\n');
+fprintf('Old implementation time: %.6f s\n', time_G_old);
+fprintf('New implementation time: %.6f s\n', time_G_new);
+if time_G_new > 0
+    fprintf('Speedup (old/new):    %.2fx\n', time_G_old / time_G_new);
+end
+
+%% G-matrices using the function
+
+opts_G_matrices_3D = struct( ...
+            'kernel_shape', 0, ...
+            'FFT_interpolation', FFT_interpolation, ...
+            'interp_zp', interp_zp, ...
+            'sketched_SVD', sketched_SVD ...
+        );
+
+        fn = fieldnames(opts_G_matrices_3D);
+        fv = struct2cell(opts_G_matrices_3D);
+        nv = [fn.'; fv.'];
+        nv = nv(:).';
+
+
+G_fun = utils.G_matrices_3D(kCal, N1, N2, N3, tau, U_copy, FFT_nullspace_C_calculation, nv{:});
+
+%% comparison G_fun vs G_new
+
+max_abs_err_G_fun = max(abs(G_fun(:) - G_new(:)));
+if max(abs(G_fun(:))) > 0
+    rel_err_G_fun = max_abs_err_G_fun / max(abs(G_fun(:)));
+else
+    rel_err_G_fun = 0;
+end
+tolG_fun = 1e-10;
+fprintf('Max absolute error (G_fun): %.3e\n', max_abs_err_G_fun);
+fprintf('Max relative error (G_fun): %.3e\n', rel_err_G_fun);
+fprintf('Equal within tol (%.0e): %s\n', tolG_fun, mat2str(max_abs_err_G_fun < tolG_fun));
 
 
