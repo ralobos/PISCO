@@ -1,4 +1,4 @@
-function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_sens, varargin)
+function [senseMaps, eigenValues] = PISCO_sensitivity_map_estimation(kCal, dim_sens, varargin)
 
     % Input parameters:
     %   --kCal:                            2D case: N1_cal x N2_cal x Nc block of calibration data, where 
