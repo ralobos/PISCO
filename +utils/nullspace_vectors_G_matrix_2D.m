@@ -190,18 +190,18 @@ if p.Results.FFT_interpolation == 1
         auxVal = 1 - eigen1;
         S_aux = fftshift(fft2(ifftshift(auxVal)));
         S_aux = S_aux .* w_sm(:, :, end);
-        auxVal_us = abs(fftshift(fftshift(ifft2(S_aux, N1, N2), 1), 2));
+        auxVal_us = abs(fftshift(fftshift(ifft2(S_aux, p.Results.N1, p.Results.N2), 1), 2));
         eigenVal = auxVal_us ./ max(auxVal_us(:));
         threshold_mask = 0.075;
         support_mask = (eigenVal < threshold_mask);
 
         S1_aux = fftshift(fft2(ifftshift(eigen1)));
         S1_aux = S1_aux .* w_sm(:, :, end);
-        eigen1_us = abs(fftshift(fftshift(ifft2(S1_aux, N1, N2), 1), 2));
+        eigen1_us = abs(fftshift(fftshift(ifft2(S1_aux, p.Results.N1, p.Results.N2), 1), 2));
 
         S2_aux = fftshift(fft2(ifftshift(eigen2)));
         S2_aux = S2_aux .* w_sm(:, :, end);
-        eigen2_us = abs(fftshift(fftshift(ifft2(S2_aux, N1, N2), 1), 2));
+        eigen2_us = abs(fftshift(fftshift(ifft2(S2_aux, p.Results.N1, p.Results.N2), 1), 2));
 
         ratioEig = (eigen2_us ./ eigen1_us) .^ p.Results.M;
         ratio_small = support_mask .* ratioEig;
@@ -243,15 +243,15 @@ if p.Results.FFT_interpolation == 1
                 auxVal = 1 - eigen1;
                 T = fftshift(fft2(ifftshift(auxVal)));
                 T = T .* w_sm(:, :, end);
-                aux_us = abs(fftshift(fftshift(ifft2(T, N1, N2), 1), 2));
+                aux_us = abs(fftshift(fftshift(ifft2(T, p.Results.N1, p.Results.N2), 1), 2));
                 eigenVal = aux_us ./ max(aux_us(:));
                 support_mask = (eigenVal < threshold_mask);
                 T1 = fftshift(fft2(ifftshift(eigen1)));
                 T1 = T1 .* w_sm(:, :, end);
-                eigen1_us = abs(fftshift(fftshift(ifft2(T1, N1, N2), 1), 2));
+                eigen1_us = abs(fftshift(fftshift(ifft2(T1, p.Results.N1, p.Results.N2), 1), 2));
                 T2 = fftshift(fft2(ifftshift(eigen2)));
                 T2 = T2 .* w_sm(:, :, end);
-                eigen2_us = abs(fftshift(fftshift(ifft2(T2, N1, N2), 1), 2));
+                eigen2_us = abs(fftshift(fftshift(ifft2(T2, p.Results.N1, p.Results.N2), 1), 2));
                 ratioEig = (eigen2_us ./ eigen1_us) .^ M_auto;
                 ratio_small = support_mask .* ratioEig;
                 ratio_small(ratio_small <= th_ratio) = 0;

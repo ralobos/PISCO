@@ -97,7 +97,7 @@ PowerIteration_flag_convergence = 1;  % Binary variable. 1 = convergence error i
                                        % array which indicates that the default value is 
                                        % being used. Default: 1
 
-PowerIteration_flag_auto = 0;         % Binary variable. 1 = Power Iteration is run until
+PowerIteration_flag_auto = 1;         % Binary variable. 1 = Power Iteration is run until
                                        % convergence in case the number of iterations
                                        % indicated by the user is too small. In this example
                                        % this variable corresponds to an empty array which

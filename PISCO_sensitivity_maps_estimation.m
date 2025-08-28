@@ -290,9 +290,7 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     t_null_G = tic;
 
-    if flag_3D == 0
-
-        opts_G_nullspace_vectors_2D = struct( ...
+     opts_G_nullspace_vectors = struct( ...
             'PowerIteration_G_nullspace_vectors', p.Results.PowerIteration_G_nullspace_vectors, ...
             'M', p.Results.M, ...
             'PowerIteration_flag_convergence', p.Results.PowerIteration_flag_convergence, ...
@@ -301,18 +299,20 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
             'gauss_win_param', p.Results.gauss_win_param, ...
             'verbose', p.Results.verbose);
 
-        fn = fieldnames(opts_G_nullspace_vectors_2D);
-        fv = struct2cell(opts_G_nullspace_vectors_2D);
+        fn = fieldnames(opts_G_nullspace_vectors);
+        fv = struct2cell(opts_G_nullspace_vectors);
         nv = [fn.'; fv.'];
         nv = nv(:).';
+
+    if flag_3D == 0
 
         [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D(kCal, ...
         dim_sens(1), dim_sens(2), G, patchSize, nv{:});
 
     else
-        [senseMaps, eigenValues] = nullspace_vectors_G_matrix_3D(kCal, dim_sens(1), dim_sens(2), dim_sens(3), ...
-            G, patchSize, p.Results.PowerIteration_G_nullspace_vectors, p.Results.M, p.Results.PowerIteration_flag_convergence, p.Results.PowerIteration_flag_auto,...
-            p.Results.FFT_interpolation, p.Results.gauss_win_param, p.Results.verbose);
+        [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_3D(kCal, ...
+        dim_sens(1), dim_sens(2), dim_sens(3), ...
+        G, patchSize, nv{:});
     end
 
     t_null_G = toc(t_null_G);
@@ -349,9 +349,14 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
     else
 
-        senseMaps = senseMaps.*repmat((exp(-complex(0,1)*angle(senseMaps(:,:,:,1)))), [1 1 1 Nc]); 
+        % Phase-reference all coils to the first coil 
+        phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
+        senseMaps = senseMaps .* phase_ref;  % align phase to channel 1
 
-        senseMaps = senseMaps./repmat(sqrt(sum(abs(senseMaps).^2,4)), [1 1 1 Nc]);
+        % Normalize sensitivities to unit L2 norm across coils at each pixel
+        den = sqrt(sum(abs(senseMaps).^2, 4));
+        den(den == 0) = 1;  % avoid division by zero (keeps zeros at zero)
+        senseMaps = senseMaps ./ den;
 
     end
 
@@ -362,436 +367,8 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
 
 end
 
-%% Extra functions
 
-function [senseMaps, eigenVal] = nullspace_vectors_G_matrix_3D(kCal, N1, N2, N3, ...
-    G, patchSize, PowerIteration_G_nullspace_vectors, M, PowerIteration_flag_convergence, PowerIteration_flag_auto, ...
-    FFT_interpolation, gauss_win_param, verbose)
 
-% Function that calculates the nullspace vectors for each G(x) matrix. These
-% vectors correspond to sensitivity maps at the x location.
-%
-% Input parameters:
-%   --kCal:         N1_cal x N2_cal x N3_cal x Nc block of calibration data, where
-%                   N1_cal, N2_cal, and N3_cal are the dimensions of a rectangular
-%                   block of Nyquist-sampled k-space, and Nc is the number of
-%                   channels in the array.
-%
-%   --N1, N2, N3:   The desired dimensions of the output sensitivity matrices.
-%
-%   --G:            N1_g x N2_g x N3_g x Nc x Nc array where G(i,j,k,:,:) 
-%                   corresponds to the G matrix at the (i,j,k) spatial location.
-%
-%   --patchSize:    Number of elements in the kernel used to calculate the
-%                   nullspace vectors of the C matrix.
-%
-%   --PowerIteration_G_nullspace_vectors: Binary variable. 0 = nullspace
-%                   vectors of the G matrices are calculated using SVD.
-%                   1 = nullspace vectors of the G matrices are calculated
-%                   using the Power Iteration approach. Default: 1.
-%
-%   --M:            Number of iterations used in the Power Iteration approach
-%                   to calculate the nullspace vectors of the G matrices.
-%                   Default: 30.
-%
-%   --PowerIteration_flag_convergence: Binary variable. 1 = convergence error
-%                   is displayed for Power Iteration if the method has not
-%                   converged for some voxels after the iterations indicated
-%                   by the user. Default: 1.
-%
-%   --PowerIteration_flag_auto: Binary variable. 1 = Power Iteration is run
-%                   until convergence in case the number of iterations
-%                   indicated by the user is too small. Default: 0.
-%
-%   --FFT_interpolation: Binary variable. 0 = no interpolation is used,
-%                   1 = FFT-based interpolation is used. Default: 1.
-%
-%   --gauss_win_param: Parameter for the Gaussian apodizing window used to
-%                   generate the low-resolution image in the FFT-based
-%                   interpolation approach. This is the reciprocal of the
-%                   standard deviation of the Gaussian window. Default: 100.
-%
-%   --verbose:      Binary variable. 1 = information about the convergence
-%                   of Power Iteration is displayed. Default: 1.
-%
-% Output parameters:
-%   --senseMaps:    N1 x N2 x N3 x Nc stack corresponding to the sensitivity
-%                   maps for each channel present in the calibration data.
-%
-%   --eigenVal:     N1 x N2 x N3 x Nc array containing the eigenvalues of G(x)
-%                   for each spatial location (normalized). Can be used for
-%                   creating a mask describing the image support (e.g.,
-%                   mask = (eigenVal(:,:,:,end) < 0.08);). If
-%                   PowerIteration_G_nullspace_vectors == 1, only the
-%                   smallest eigenvalue is returned (dimensions: N1 x N2 x N3).
-%                   If FFT_interpolation == 1, approximations of eigenvalues
-%                   are returned.%   --FFT_interpolation: Binary variable. 0 = no interpolation is used,
-%                   1 = FFT-based interpolation is used. Default: 1.
-
-if nargin < 6 || not(isnumeric(PowerIteration_G_nullspace_vectors)) || not(numel(PowerIteration_G_nullspace_vectors))
-    PowerIteration_G_nullspace_vectors = 1;
-end
-
-if nargin < 7 || not(isnumeric(M)) || not(numel(M))
-    M = 30;
-end
-
-if nargin < 8 || not(isnumeric(PowerIteration_flag_convergence)) || not(numel(PowerIteration_flag_convergence))
-    PowerIteration_flag_convergence = 1;
-end
-
-if nargin < 9 || not(isnumeric(PowerIteration_flag_auto)) || not(numel(PowerIteration_flag_auto))
-    PowerIteration_flag_auto = 0;
-end
-
-if nargin < 10 || not(isnumeric(FFT_interpolation)) || not(numel(FFT_interpolation))
-    FFT_interpolation = 1;
-end
-
-if nargin < 11 || not(isnumeric(gauss_win_param)) || not(numel(gauss_win_param))
-    gauss_win_param = 100;
-end
-
-if nargin < 12 || not(isnumeric(verbose)) || not(numel(verbose))
-    verbose = 1;
-end
-
-if PowerIteration_flag_auto == 1
-    PowerIteration_flag_convergence = 0;
-end
-
-N1_g = size(G,1);
-N2_g = size(G,2);
-N3_g = size(G,3);
-Nc = size(G,4);
-
-G = reshape(permute(G, [4 5 1 2 3]), [Nc Nc (N1_g*N2_g*N3_g)]);
-
-if PowerIteration_G_nullspace_vectors == 0
-    
-    [~, eigenVal, Vpage] = pagesvd(G, 'econ', 'vector');
-
-    eigenVal = reshape(permute(eigenVal, [3 1 2]), [N1_g, N2_g, N3_g, Nc]);
-
-    senseMaps = reshape(permute(Vpage(:, end, :), [3 1 2]), [N1_g N2_g N3_g Nc]);
-    
-    clear G
-    
-    eigenVal = eigenVal/patchSize;
-    
-else
-    
-    G = G/patchSize;
-    
-    G = permute(G, [4 5 1 2 3]);
-    G = reshape(G, [Nc, Nc, N1_g*N2_g*N3_g]);
-
-    G_null = repmat(eye(Nc), [1 1 (N1_g*N2_g*N3_g)]); 
-
-    G_null = G_null - G;
-
-    clear G
-
-    if PowerIteration_flag_convergence == 0 && PowerIteration_flag_auto == 0
-
-        S = randn(Nc,1) + 1i*randn(Nc,1);
-        S = repmat(S, [1 1 N1_g*N2_g*N3_g]);
-        S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-
-        for m = 1:M
-            S = pagemtimes(G_null, S);
-    
-            S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-    
-            if m == M
-                E = pagemtimes(S, 'ctranspose', pagemtimes(G_null, S), 'none');
-            end   
-        end
-        
-        clear G_null 
-
-        senseMaps = reshape(permute(squeeze(S), [2 1]) , [N1_g, N2_g, N3_g, Nc]);
-        
-        eigenVal = reshape(permute(E, [3 1 2]), [N1_g, N2_g, N3_g]);
-
-        eigenVal = 1 - eigenVal;
-
-    end
-
-    if PowerIteration_flag_convergence == 1 || PowerIteration_flag_auto == 1
-
-        S = randn(Nc,1) + 1i*randn(Nc,1);;
-        S2 = randn(Nc,1) + 1i*randn(Nc,1);
-        
-        S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:)); 
-        S2(:,1,:) = S2(:,1,:)./pagenorm(S2(:,1,:));       
-        
-        for m = 1:M
-            S = pagemtimes(G_null, S);
-            S2 = pagemtimes(G_null, S2);
-            
-            S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-    
-            inner_prod = pagemtimes(S(:,1,:), 'ctranspose', S2(:,1,:), 'none');
-    
-            S2(:,1,:) = S2(:,1,:) - inner_prod.*S(:,1,:);
-   
-            S2(:,1,:) = S2(:,1,:)./pagenorm(S2(:,1,:));
-    
-            if m == M
-
-                E = pagemtimes(S, 'ctranspose', pagemtimes(G_null, S), 'none');
-                E2 = pagemtimes(S2, 'ctranspose', pagemtimes(G_null, S2), 'none');
-            end
-        end
-    
-        eigen1 = reshape(permute(E, [3 1 2]), [N1_g, N2_g, N3_g]);
-        eigen2 = reshape(permute(E2, [3 1 2]), [N1_g, N2_g, N3_g]);
-        
-
-        if  FFT_interpolation == 0
-
-            eigenVal = 1 - eigen1;
-
-            threshold_mask = 0.075;
-            
-            support_mask = zeros(size(eigenVal));
-            support_mask(find(eigenVal < threshold_mask)) = 1;
-    
-            ratioEig = (eigen2./eigen1).^M;
-            ratio_small = support_mask.*ratioEig;
-        
-            th_ratio = 0.008;
-        
-            ratio_small(find(ratio_small <= th_ratio)) = 0;
-            ratio_small(find(ratio_small > th_ratio)) = 1;
-        
-            flag_convergence_PI = sum(ratio_small(:)) > 0;
-            
-            
-            if flag_convergence_PI == 1 && PowerIteration_flag_convergence == 1
-                error(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                ' iterations indicated by the user. Increasing the number of iterations is recommended. You can ignore this error by setting PowerIteration_flag_convergence = 0. '...
-                'The number of needed iterations for convergence can be found automatically by setting PowerIteration_flag_auto = 1. '])   
-            end
-
-            if flag_convergence_PI == 0
-                if verbose == 1
-                     disp(['Most likely Power Iteration has converged for all the voxels within the support after the ' int2str(M) ' iterations indicated by the user.'])
-                end
-            end
-            
-        
-
-        if PowerIteration_flag_auto == 1 && flag_convergence_PI == 1
-            if verbose == 1
-                warning('off','backtrace')
-                warning(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                                ' iterations indicated by the user. The number of iterations for the convergence of Power Iteration will be found automatically. You can turn off this option by setting PowerIteration_flag_auto = 0. ']) 
-            end
-            M_auto = M+1;
-            while(flag_convergence_PI == 1)
-                S = pagemtimes(G_null, S);
-                S2 = pagemtimes(G_null, S2);
-                
-                S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-        
-                inner_prod = pagemtimes(S(:,1,:), 'ctranspose', S2(:,1,:), 'none');
-        
-                S2(:,1,:) = S2(:,1,:) - inner_prod.*S(:,1,:);
-    
-                S2(:,1,:) = S2(:,1,:)./pagenorm(S2(:,1,:));
-        
-                E = pagemtimes(S, 'ctranspose', pagemtimes(G_null, S), 'none');
-                E2 = pagemtimes(S2, 'ctranspose', pagemtimes(G_null, S2), 'none');
-
-                eigen1 = reshape(permute(E, [3 1 2]), [N1_g, N2_g, N3_g]);
-                eigen2 = reshape(permute(E2, [3 1 2]), [N1_g, N2_g, N3_g]);
-
-                eigenVal = 1 - eigen1;
-                
-                support_mask = zeros(size(eigenVal));
-                support_mask(find(eigenVal < threshold_mask)) = 1;
-        
-                ratioEig = (eigen2./eigen1).^M_auto;
-                ratio_small = support_mask.*ratioEig;
-            
-                ratio_small(find(ratio_small <= th_ratio)) = 0;
-                ratio_small(find(ratio_small > th_ratio)) = 1;
-            
-                flag_convergence_PI = sum(ratio_small(:)) > 0;
-
-                M_auto = M_auto + 1;
-            end
-            
-            if verbose == 1
-                disp(['Most likely Power Iteration has converged for all the voxels within the support. ' int2str(M_auto) ' iterations were needed.'] )
-            end
-
-        end
-
-        eigenVal = abs(eigenVal);
-
-        end
-
-     senseMaps = reshape(permute(squeeze(S), [2 1]) , [N1_g, N2_g, N3_g, Nc]);
-
-     
-
-    end
-
-    
-
-
-end
-
-% ==== FFT-based interpolation ====
-
-if FFT_interpolation == 1
-
-    [N1_cal, N2_cal, N3_cal, ~] = size(kCal);
-    
-    w_sm = [0.54 - 0.46*cos(2*pi*([0:(N1_g-1)]/(N1_g-1)))].';
-    w_sm2 = [0.54 - 0.46*cos(2*pi*([0:(N2_g-1)]/(N2_g-1)))].';
-    w_sm3 = [0.54 - 0.46*cos(2*pi*([0:(N3_g-1)]/(N3_g-1)))].';
-    w_sm_2d = w_sm*w_sm2';
-
-    w_sm = bsxfun(@times, w_sm_2d, reshape(w_sm3, [1 1 N3_g]));
-
-    w_sm_sM = repmat(w_sm, [1 1 1 Nc]); 
-
-    if PowerIteration_G_nullspace_vectors == 1 && (PowerIteration_flag_convergence == 1 || PowerIteration_flag_auto == 1) 
-
-        auxVal = 1 - eigen1;
-
-        eigenVal = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(auxVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-        threshold_mask = 0.075;
-        
-        support_mask = zeros(size(eigenVal));
-        support_mask(find(eigenVal < threshold_mask)) = 1;
-    
-        eigen1_us = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(eigen1).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-        eigen2_us = abs(fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(eigen2).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-        ratioEig = (eigen2_us./eigen1_us).^M;
-        ratio_small = support_mask.*ratioEig;
-    
-        th_ratio = 0.008;
-    
-        ratio_small(find(ratio_small <= th_ratio)) = 0;
-        ratio_small(find(ratio_small > th_ratio)) = 1;
-    
-        flag_convergence_PI = sum(ratio_small(:)) > 0;
-    
-        if flag_convergence_PI == 1 && PowerIteration_flag_convergence == 1
-            error(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                ' iterations indicated by the user. Increasing the number of iterations is recommended. You can ignore this error by setting PowerIteration_flag_convergence = 0. '...
-                'The number of needed iterations for convergence can be found automatically by setting PowerIteration_flag_auto = 1. '])   
-        end
-
-        if flag_convergence_PI == 0
-            if verbose == 1
-                 disp(['Most likely Power Iteration has converged for all the voxels within the support after the ' int2str(M) ' iterations indicated by the user.'])
-            end
-        end
-
-    if PowerIteration_flag_auto == 1 && flag_convergence_PI == 1
-        if verbose == 1
-            warning('off','backtrace')
-            warning(['Power Iteration might have not converged for some voxels within the support after the ' int2str(M)...
-                    ' iterations indicated by the user. The number of iterations for the convergence of Power Iteration will be found automatically. You can turn off this option by setting PowerIteration_flag_auto = 0.'])
-        end
-        M_auto = M+1;
-        while(flag_convergence_PI == 1)
-            S = pagemtimes(G_null, S);
-            S2 = pagemtimes(G_null, S2);
-            
-            S(:,1,:) = S(:,1,:)./pagenorm(S(:,1,:));
-    
-            inner_prod = pagemtimes(S(:,1,:), 'ctranspose', S2(:,1,:), 'none');
-    
-            S2(:,1,:) = S2(:,1,:) - inner_prod.*S(:,1,:);
-
-            S2(:,1,:) = S2(:,1,:)./pagenorm(S2(:,1,:));
-    
-            E = pagemtimes(S, 'ctranspose', pagemtimes(G_null, S), 'none');
-            E2 = pagemtimes(S2, 'ctranspose', pagemtimes(G_null, S2), 'none');
-
-            eigen1 = reshape(permute(E, [3 1 2]), [N1_g, N2_g, N3_g]);
-            eigen2 = reshape(permute(E2, [3 1 2]), [N1_g, N2_g, N3_g]);
-
-            auxVal = 1 - eigen1;
-
-            eigenVal = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(auxVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-            eigenVal = eigenVal/max(eigenVal(:));
-            
-            support_mask = zeros(size(eigenVal));
-            support_mask(find(eigenVal < threshold_mask)) = 1;
-
-            eigen1_us = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigen1).*w_sm, [N1 N2 N3]), 1), 2), 3));
-    
-            eigen2_us = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigen2).*w_sm, [N1 N2 N3]), 1), 2), 3));   
-    
-            ratioEig = (eigen2_us./eigen1_us).^M_auto;
-            ratio_small = support_mask.*ratioEig;
-        
-            ratio_small(find(ratio_small <= th_ratio)) = 0;
-            ratio_small(find(ratio_small > th_ratio)) = 1;
-        
-            flag_convergence_PI = sum(ratio_small(:)) > 0;
-
-            M_auto = M_auto + 1;
-        end
-
-        if verbose == 1
-            disp(['Most likely Power Iteration has converged for all the voxels within the support. ' int2str(M_auto) ' iterations were needed.'] )
-        end
-
-    end
-
-    end
-
-    if PowerIteration_G_nullspace_vectors == 1 && PowerIteration_flag_convergence == 0 && PowerIteration_flag_auto == 0
-
-        eigenVal = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigenVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-    end
-
-    if PowerIteration_G_nullspace_vectors == 0
-
-        eigenVal = abs(fftshift(fftshift(fftshift(ifft3_zp(ft3(eigenVal).*w_sm, [N1 N2 N3]), 1), 2), 3));
-
-        eigenVal = eigenVal/max(eigenVal(:));
-
-    end
-    
-    apodizing_window_2D = gausswin(N1_g,gauss_win_param)*gausswin(N2_g,gauss_win_param)';
-
-    apodizing_window = bsxfun(@times, apodizing_window_2D, reshape(gausswin(N3_g,gauss_win_param), [1 1 N3_g]));
-
-    imLowRes_cal = zeros(N1_g,N2_g,N3_g,Nc);
-    imLowRes_cal(ceil(N1_g/2)+utils.even_pisco(N1_g/2)+[-floor(N1_cal/2):floor(N1_cal/2)-utils.even_pisco(N1_cal/2)],ceil(N2_g/2)+utils.even_pisco(N2_g/2)+[-floor(N2_cal/2):floor(N2_cal/2)-utils.even_pisco(N2_cal/2)],...
-        ceil(N3_g/2)+utils.even_pisco(N3_g/2)+[-floor(N3_cal/2):floor(N3_cal/2)-utils.even_pisco(N3_cal/2)],:) = kCal;
-    imLowRes_cal = utils.ift3(imLowRes_cal.*apodizing_window); 
-
-    cim = sum(conj(senseMaps).*imLowRes_cal,4)./sum(abs(senseMaps).^2,4) ;  
-
-    phase_norm = exp(complex(0,1)* angle(cim));
-
-    senseMaps = phase_norm.*senseMaps;
-
-    senseMaps = fftshift(fftshift(fftshift(utils.ifft3_zp(utils.ft3(senseMaps).*w_sm_sM, [N1 N2 N3]), 1), 2), 3); 
-
-end
-
-end
 
 
 
