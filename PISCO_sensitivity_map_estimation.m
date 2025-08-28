@@ -109,6 +109,9 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_map_estimation(kCal, dim_s
     %                                               dim_sens(2)). If FFT_interpolation == 1, approximations
     %                                               of eigenvalues are returned.
 
+    % V2.0: Rodrigo A. Lobos (rlobos@umich.edu)
+    % August, 2025.
+
     % Set default values for optional parameters
     p = inputParser;
 
