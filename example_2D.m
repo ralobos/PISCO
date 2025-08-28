@@ -36,19 +36,19 @@ clc
 
 %% Loading data
 
-load('./data/2D_T1_data.mat')
+load('./data/2D_T1_human_data.mat')
 
 kData = double(kData);
 [N1, N2, Nc] = size(kData);
 
 figure;
-imagesc(+utils.mdisp(abs(fftshift(ifft2(ifftshift(kData))))));
+imagesc(utils.mdisp(abs(fftshift(ifft2(ifftshift(kData))))));
 axis image;
 axis tight;
 axis off;
 colormap gray;
 title(['Data in the spatial domain']);
-caxis([0 1e-8]);
+clim([0 1e-8]);
 
 %% Selection of calibration data
 

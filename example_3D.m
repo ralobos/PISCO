@@ -37,7 +37,7 @@ clc
 
 %% Loading data
 
-load('./data/3D_GRE_data.mat')
+load('./data/3D_GRE_phantom_data.mat')
 
 [N1, N2, N3, Nc] = size(kData);
 
@@ -54,7 +54,7 @@ axis tight;
 axis off;
 colormap gray;
 title(['Data in the spatial domain (all coils for one slice)']);
-clim([0 0.1]);
+clim([0 0.3]);
 
 figure;
 imagesc(utils.mdisp(idata_sos));
