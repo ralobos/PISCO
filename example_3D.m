@@ -48,7 +48,7 @@ idata_sos = sqrt(sum(abs(idata).^2, 4)); % sum of squares image
 slc = 34; % Slice to display
 
 figure; 
-imagesc(mdisp(abs(squeeze(idata(:, :, slc, :))))); 
+imagesc(utils.mdisp(abs(squeeze(idata(:, :, slc, :))))); 
 axis image; 
 axis tight; 
 axis off; 
@@ -57,7 +57,7 @@ title(['Data in the spatial domain (all coils for one slice)']);
 clim([0 0.1]);
 
 figure; 
-imagesc(mdisp(idata_sos)); 
+imagesc(utils.mdisp(idata_sos)); 
 axis image; 
 axis tight; 
 axis off; 
@@ -69,13 +69,13 @@ clim([0 1]);
 
 cal_length = 32; % Length of each dimension of the calibration data
 
-center_x = ceil(N1/2)+even_pisco(N1);
-center_y = ceil(N2/2)+even_pisco(N2);
-center_z = ceil(N3/2)+even_pisco(N3);
+center_x = ceil(N1/2)+utils.even_pisco(N1);
+center_y = ceil(N2/2)+utils.even_pisco(N2);
+center_z = ceil(N3/2)+utils.even_pisco(N3);
 
-cal_index_x = center_x + [-floor(cal_length/2):floor(cal_length/2)-even_pisco(cal_length/2)];
-cal_index_y = center_y + [-floor(cal_length/2):floor(cal_length/2)-even_pisco(cal_length/2)];
-cal_index_z = center_z + [-floor(cal_length/2):floor(cal_length/2)-even_pisco(cal_length/2)];
+cal_index_x = center_x + [-floor(cal_length/2):floor(cal_length/2)-utils.even_pisco(cal_length/2)];
+cal_index_y = center_y + [-floor(cal_length/2):floor(cal_length/2)-utils.even_pisco(cal_length/2)];
+cal_index_z = center_z + [-floor(cal_length/2):floor(cal_length/2)-utils.even_pisco(cal_length/2)];
 
 kCal = kData(cal_index_x, cal_index_y, cal_index_z, :);
 
@@ -196,7 +196,7 @@ senseMaps_masked = senseMaps.*eig_mask;
 %% Estimated Sensitivity Maps 
 
 figure; 
-imagesc(mdisp(abs(squeeze(senseMaps(:, :, slc, :))))); 
+imagesc(utils.mdisp(abs(squeeze(senseMaps(:, :, slc, :))))); 
 axis tight; 
 axis image; 
 axis off;
@@ -204,7 +204,7 @@ colormap gray;
 title('Estimated sensitivity maps -- One slice');
 
 figure; 
-imagesc(mdisp(abs(squeeze(senseMaps_masked(:, :, slc, :))))); 
+imagesc(utils.mdisp(abs(squeeze(senseMaps_masked(:, :, slc, :))))); 
 axis tight; 
 axis image; 
 axis off;
@@ -212,7 +212,7 @@ colormap gray;
 title('Masked sensitivity maps -- One slice');
 
 figure; 
-imagesc(mdisp(angle(squeeze(senseMaps_masked(:, :, slc, :))))); 
+imagesc(utils.mdisp(angle(squeeze(senseMaps_masked(:, :, slc, :))))); 
 axis tight; 
 axis image; 
 axis off;
@@ -223,7 +223,7 @@ title('Masked sensitivity maps (Phase) -- One slice');
 if PowerIteration_G_nullspace_vectors == 1 
     title_eig_values = 'Smallest eigenvalue of normalized G matrices (spatial map) -- All slices';
     figure; 
-    imagesc(mdisp(abs(eigenValues))); 
+    imagesc(utils.mdisp(abs(eigenValues))); 
     axis tight; 
     axis image; 
     axis off;
@@ -233,7 +233,7 @@ if PowerIteration_G_nullspace_vectors == 1
 else
     title_eig_values = 'Eigenvalues of normalized G matrices (spatial maps) -- One slice';
     figure; 
-    imagesc(mdisp(abs(squeeze(eigenValues(:,:,slc,:))))); 
+    imagesc(utils.mdisp(abs(squeeze(eigenValues(:,:,slc,:))))); 
     axis tight; 
     axis image; 
     axis off;
@@ -243,45 +243,11 @@ else
 end
 
 figure; 
-imagesc(mdisp(eig_mask)); 
+imagesc(utils.mdisp(eig_mask)); 
 axis tight; 
 axis image; 
 axis off;
 colormap gray; 
 title('Support mask -- All slices');
 
-%% Auxiliary functions
 
-function result = even_pisco(int)
-% Function that checks if an integer is even.
-%
-% Input parameters:
-%   --int:    Integer value to be checked.
-%
-% Output parameters:
-%   --result: Logical value. Returns 1 (true) if int is even, 0 (false) otherwise.
-%
-    result = not(rem(int,2));
-end
-
-function tempForDisplay = mdisp(x)
-% Function used to visualize multichannel images.
-% If the input corresponds to a 3D array of dimensions N1 x N2 x Nc, the
-% output corresponds to a 2D array that displays Nc images of dimension
-% N1 x N2.
-%
-% Input parameters:
-%   --x:              3D array of size N1 x N2 x Nc, where Nc is the number
-%                     of channels.
-%
-% Output parameters:
-%   --tempForDisplay: 2D array that arranges the Nc images of size N1 x N2
-%                     into a single displayable image.
-%
-
-    [N1,N2,Nc] = size(x);
-    f = factor(Nc);if numel(f)==1;f = [1,f];end
-    tempForDisplay = reshape(permute(reshape(x,[N1,N2,prod(f(1:floor(numel(f)/2))),...
-        prod(f(floor(numel(f)/2)+1:end))]),[1,3,2,4]),[N1*prod(f(1:floor(numel(f)/2))),...
-        N2*prod(f(floor(numel(f)/2)+1:end))]); 
-end
