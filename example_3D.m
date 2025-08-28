@@ -26,10 +26,7 @@
 % V2.0: Rodrigo A. Lobos (rlobos@umich.edu)
 % August, 2025.
 %
-% Placeholder: Copyright.
-%
 % =========================================================================
-
 
 clear all
 close all
