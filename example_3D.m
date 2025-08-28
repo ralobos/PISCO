@@ -173,7 +173,7 @@ end
 
 %% Support mask created from the last eigenvalues of the G matrices 
 
-threshold_mask = 0.6;
+threshold_mask = 0.25;
 
 eig_mask = zeros(N1, N2, N3);
 eig_mask(find(eigenValues(:, :, :, end) < threshold_mask)) = 1;
