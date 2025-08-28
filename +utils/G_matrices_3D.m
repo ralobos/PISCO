@@ -1,25 +1,45 @@
 function G = G_matrices_3D(kCal, N1, N2, N3, tau, U, varargin)
 
-% Function that calculates the 3D G(x) matrices directly without calculating
-% H(x) first. This is the 3D analogue of utils.G_matrices_2D.
+% Function that calculates the G(x) matrices directly without calculating
+% H(x) first.
 %
 % Input parameters:
-%   --kCal:         N1_cal x N2_cal x N3_cal x Nc block of calibration data
-%                   (Nyquist-sampled k-space), Nc is number of coils.
-%   --N1, N2, N3:   Desired dimensions of the output sensitivity matrices.
-%   --tau:          Nyquist kernel half-size. Rectangular kernel size is
-%                   (2*tau+1)^3. For ellipsoidal kernel, tau is radius.
-%   --U:            Columns form a basis for the nullspace of the 3D C matrix.
-%   --kernel_shape: 0 = rectangular, 1 = ellipsoidal. Default: 1.
-%   --FFT_interpolation: 0 = none, 1 = FFT-based interpolation. Default: 1.
-%   --interp_zp:    Zero-padding amount for the low-res grid if using
-%                   FFT-interpolation. Default: 24.
-%   --sketched_SVD: 1 = use sketched SVD basis (I - U U^H). Default: 1.
+%   --kCal:         N1_cal x N2_cal x N3_cal x Nc block of calibration data,
+%                   where N1_cal, N2_cal, and N3_cal are the dimensions of a
+%                   rectangular block of Nyquist-sampled k-space, and
+%                   Nc is the number of channels in the array.
 %
-% Output:
-%   --G:            N1_g x N2_g x N3_g x Nc x Nc array, where N?_g depends on
-%                   interpolation choice (equals N? if FFT_interpolation==0,
-%                   else N?_cal + interp_zp, clipped by N?).
+%   --N1, N2, N3:   The desired dimensions of the output sensitivity
+%                   matrices.
+%
+%   --tau:          Parameter (in Nyquist units) that determines the
+%                   size of the k-space kernel. For a rectangular
+%                   kernel, the size corresponds to (2*tau+1) x
+%                   (2*tau+1) x (2*tau+1). For an ellipsoidal kernel, it
+%                   corresponds to the radius of the associated
+%                   neighborhood. Default: 3.
+%
+%   --U:            Matrix whose columns correspond to the nullspace
+%                   vectors of the C matrix.
+%
+%   --kernel_shape: Binary variable. 0 = rectangular kernel, 1 = ellipsoidal
+%                   kernel. Default: 1.
+%
+%   --FFT_interpolation: Binary variable. 0 = no interpolation is used,
+%                   1 = FFT-based interpolation is used. Default: 1.
+%
+%   --interp_zp:    Amount of zero-padding to create the low-resolution
+%                   grid if FFT-interpolation is used. The low-resolution
+%                   grid has dimensions (N1_acs + interp_zp) x
+%                   (N2_acs + interp_zp) x (N3_acs + interp_zp) x Nc. Default: 24.
+%
+%   --sketched_SVD: Binary variable. 1 = sketched SVD is used to calculate
+%                   a basis for the nullspace of the C matrix. Default: 1.
+%
+% Output parameters:
+%   --G:            N1 x N2 x N3 x Nc x Nc array where G[i,j,k,:,:]
+%                   corresponds to the G matrix at the (i,j,k) spatial
+%                   location.
 
 % Parse inputs
 p = inputParser;

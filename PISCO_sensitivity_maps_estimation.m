@@ -1,4 +1,3 @@
-
 function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_sens, varargin)
 
     % Input parameters:
@@ -111,7 +110,6 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
     %                                               of eigenvalues are returned.
 
     % Set default values for optional parameters
-
     p = inputParser;
 
     addRequired(p, 'kCal', @(x) isnumeric(x) && (ndims(x) == 3 || ndims(x) == 4));
@@ -138,10 +136,9 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
     else
         parse(p, kCal, dim_sens, varargin{:});
     end
-   
-    if p.Results.verbose == 1
 
-        if p.Results.kernel_shape ==0
+    if p.Results.verbose == 1
+        if p.Results.kernel_shape == 0
             kernel_shape_q = 'Rectangular';
         else
             kernel_shape_q = 'Ellipsoidal';
@@ -170,7 +167,7 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
         else
             sketched_SVD_q = 'Yes';
         end
-        
+
         disp('Selected PISCO techniques:')
         disp('=======================')
         disp(['Kernel shape : ' kernel_shape_q])
@@ -179,38 +176,34 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
         disp(['FFT-based interpolation : ' FFT_interpolation_q])
         disp(['PowerIteration-based nullspace estimation for G matrices : ' PowerIteration_nullspace_vectors_q])
         disp('=======================')
-
     end
 
     if numel(size(kCal)) > 3
-        flag_3D = 1; % 3D data
+        flag_3D = 1;  % 3D data
     else
-        flag_3D = 0; % 2D data
+        flag_3D = 0;  % 2D data
     end
 
     t_null = tic;
 
     % ==== Nullspace-based algorithm Steps (1) and (2)  ====
-
-    % Calculation of nullspace vectors of C 
-
+    % Calculation of nullspace vectors of C
     t_null_vecs = tic;
 
     opts_nullspace_C_matrix = struct( ...
-        'tau', p.Results.tau,...
-        'threshold', p.Results.threshold,...
-        'kernel_shape', p.Results.kernel_shape,...
-        'FFT_nullspace_C_calculation', p.Results.FFT_nullspace_C_calculation,...
-        'sketched_SVD', p.Results.sketched_SVD,...
-        'sketch_dim', p.Results.sketch_dim,...
-        'visualize_C_matrix_sv', p.Results.visualize_C_matrix_sv...
-            );
+        'tau',                        p.Results.tau, ...
+        'threshold',                  p.Results.threshold, ...
+        'kernel_shape',               p.Results.kernel_shape, ...
+        'FFT_nullspace_C_calculation', p.Results.FFT_nullspace_C_calculation, ...
+        'sketched_SVD',               p.Results.sketched_SVD, ...
+        'sketch_dim',                 p.Results.sketch_dim, ...
+        'visualize_C_matrix_sv',      p.Results.visualize_C_matrix_sv ...
+    );
 
     fn = fieldnames(opts_nullspace_C_matrix);
     fv = struct2cell(opts_nullspace_C_matrix);
     nv = [fn.'; fv.'];
     nv = nv(:).';
-
 
     if flag_3D == 0
         U = utils.nullspace_vectors_C_matrix_2D(kCal, nv{:});
@@ -221,7 +214,6 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
     t_null_vecs = toc(t_null_vecs);
 
     if p.Results.verbose == 1
-
         if p.Results.FFT_nullspace_C_calculation == 0
             aux_word = 'Calculating C first';
         else
@@ -233,86 +225,85 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
         else
             aux_word = [aux_word ', using sketched SVD'];
         end
-        
+
         disp('=======================')
         disp('PISCO computation times (secs):')
         disp('=======================')
-        disp(['Time nullspace vectors of C (' aux_word ') : ' num2str(t_null_vecs)]) 
+        disp(['Time nullspace vectors of C (' aux_word ') : ' num2str(t_null_vecs)])
         disp('=======================')
-
     end
 
     % ==== Nullspace-based algorithm Step (3)  ====
-
-    % Direct computation of G matrices 
-
+    % Direct computation of G matrices
     t_G_matrices = tic;
 
     opts_G_matrices = struct( ...
-            'kernel_shape', p.Results.kernel_shape, ...
-            'FFT_interpolation', p.Results.FFT_interpolation, ...
-            'interp_zp', p.Results.interp_zp, ...
-            'sketched_SVD', p.Results.sketched_SVD ...
-        );
+        'kernel_shape',  p.Results.kernel_shape, ...
+        'FFT_interpolation', p.Results.FFT_interpolation, ...
+        'interp_zp',     p.Results.interp_zp, ...
+        'sketched_SVD',  p.Results.sketched_SVD ...
+    );
 
-        fn = fieldnames(opts_G_matrices);
-        fv = struct2cell(opts_G_matrices);
-        nv = [fn.'; fv.'];
-        nv = nv(:).';
+    fn = fieldnames(opts_G_matrices);
+    fv = struct2cell(opts_G_matrices);
+    nv = [fn.'; fv.'];
+    nv = nv(:).';
 
     if flag_3D == 0
-
-        G = utils.G_matrices_2D(kCal, dim_sens(1), dim_sens(2), p.Results.tau, U, nv{:});
+        G = utils.G_matrices_2D( ...
+            kCal, dim_sens(1), dim_sens(2), p.Results.tau, U, nv{:} ...
+        );
     else
-        G = utils.G_matrices_3D(kCal, dim_sens(1), dim_sens(2), dim_sens(3), p.Results.tau, U, p.Results.FFT_nullspace_C_calculation, nv{:});
+        G = utils.G_matrices_3D( ...
+            kCal, dim_sens(1), dim_sens(2), dim_sens(3), p.Results.tau, U, ...
+            p.Results.FFT_nullspace_C_calculation, nv{:} ...
+        );
     end
 
     t_G_matrices = toc(t_G_matrices);
 
     if flag_3D == 0
-        Nc = size(kCal,3);
-        patchSize = size(U,1)/Nc;
+        Nc = size(kCal, 3);
+        patchSize = size(U, 1) / Nc;
         clear U
     else
-        Nc = size(kCal,4);
-        patchSize = size(U,1)/Nc;
+        Nc = size(kCal, 4);
+        patchSize = size(U, 1) / Nc;
         clear U
     end
 
     if p.Results.verbose == 1
-        disp(['Time G matrices (direct calculation): ' num2str(t_G_matrices )]) 
+        disp(['Time G matrices (direct calculation): ' num2str(t_G_matrices)])
         disp('=======================')
     end
 
     % ==== Nullspace-based algorithm Step (4)  ====
-
     % Calculation of nullspace vectors of the G matrices
-
     t_null_G = tic;
 
-     opts_G_nullspace_vectors = struct( ...
-            'PowerIteration_G_nullspace_vectors', p.Results.PowerIteration_G_nullspace_vectors, ...
-            'M', p.Results.M, ...
-            'PowerIteration_flag_convergence', p.Results.PowerIteration_flag_convergence, ...
-            'PowerIteration_flag_auto', p.Results.PowerIteration_flag_auto, ...
-            'FFT_interpolation', p.Results.FFT_interpolation, ...
-            'gauss_win_param', p.Results.gauss_win_param, ...
-            'verbose', p.Results.verbose);
+    opts_G_nullspace_vectors = struct( ...
+        'PowerIteration_G_nullspace_vectors', p.Results.PowerIteration_G_nullspace_vectors, ...
+        'M',                                  p.Results.M, ...
+        'PowerIteration_flag_convergence',    p.Results.PowerIteration_flag_convergence, ...
+        'PowerIteration_flag_auto',           p.Results.PowerIteration_flag_auto, ...
+        'FFT_interpolation',                  p.Results.FFT_interpolation, ...
+        'gauss_win_param',                    p.Results.gauss_win_param, ...
+        'verbose',                            p.Results.verbose ...
+    );
 
-        fn = fieldnames(opts_G_nullspace_vectors);
-        fv = struct2cell(opts_G_nullspace_vectors);
-        nv = [fn.'; fv.'];
-        nv = nv(:).';
+    fn = fieldnames(opts_G_nullspace_vectors);
+    fv = struct2cell(opts_G_nullspace_vectors);
+    nv = [fn.'; fv.'];
+    nv = nv(:).';
 
     if flag_3D == 0
-
-        [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D(kCal, ...
-        dim_sens(1), dim_sens(2), G, patchSize, nv{:});
-
+        [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_2D( ...
+            kCal, dim_sens(1), dim_sens(2), G, patchSize, nv{:} ...
+        );
     else
-        [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_3D(kCal, ...
-        dim_sens(1), dim_sens(2), dim_sens(3), ...
-        G, patchSize, nv{:});
+        [senseMaps, eigenValues] = utils.nullspace_vectors_G_matrix_3D( ...
+            kCal, dim_sens(1), dim_sens(2), dim_sens(3), G, patchSize, nv{:} ...
+        );
     end
 
     t_null_G = toc(t_null_G);
@@ -320,59 +311,41 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_maps_estimation(kCal, dim_
     clear G
 
     if p.Results.verbose == 1
-
         if p.Results.PowerIteration_G_nullspace_vectors == 0
             aux_word = 'Using SVD';
         else
             aux_word = 'Using Power Iteration';
         end
 
-        disp(['Time nullspace vector G matrices (' aux_word ') : ' num2str(t_null_G)]) 
+        disp(['Time nullspace vector G matrices (' aux_word ') : ' num2str(t_null_G)])
         disp('=======================')
-        
     end
 
     % ==== Nullspace-based algorithm Step (5)  ====
-
-    %  Normalization 
-
+    % Normalization
     if flag_3D == 0
-        
         % Phase-reference all coils to the first coil 
-        phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
-        senseMaps = senseMaps .* phase_ref;  % align phase to channel 1
+        phase_ref = exp(-1i * angle(senseMaps(:, :, 1)));
+        senseMaps = senseMaps .* phase_ref;
 
         % Normalize sensitivities to unit L2 norm across coils at each pixel
         den = sqrt(sum(abs(senseMaps).^2, 3));
-        den(den == 0) = 1;  % avoid division by zero (keeps zeros at zero)
+        den(den == 0) = 1;
         senseMaps = senseMaps ./ den;
-
     else
-
         % Phase-reference all coils to the first coil 
-        phase_ref = exp(-1i * angle(senseMaps(:,:,1)));
-        senseMaps = senseMaps .* phase_ref;  % align phase to channel 1
+        phase_ref = exp(-1i * angle(senseMaps(:, :, 1)));
+        senseMaps = senseMaps .* phase_ref;
 
         % Normalize sensitivities to unit L2 norm across coils at each pixel
         den = sqrt(sum(abs(senseMaps).^2, 4));
-        den(den == 0) = 1;  % avoid division by zero (keeps zeros at zero)
+        den(den == 0) = 1;
         senseMaps = senseMaps ./ den;
-
     end
 
     if p.Results.verbose == 1
-        disp(['Total time: ' num2str(toc(t_null))]) 
+        disp(['Total time: ' num2str(toc(t_null))])
         disp('=======================')
     end
 
 end
-
-
-
-
-
-
-
-
-
-

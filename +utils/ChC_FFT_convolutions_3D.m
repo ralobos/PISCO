@@ -8,10 +8,6 @@ function ChC = ChC_FFT_convolutions_3D(X, varargin)
 %                   N2, and N3 are the data dimensions, and Nc is the number
 %                   of channels in the array.
 %
-%   --N1, N2, N3:   Dimensions of the k-space data.
-%
-%   --Nc:           Number of channels of the k-space data.
-%
 %   --tau:          Parameter (in Nyquist units) that determines the size of
 %                   the k-space kernel. For a rectangular kernel, the size
 %                   corresponds to (2*tau+1) x (2*tau+1) x (2*tau+1). For an

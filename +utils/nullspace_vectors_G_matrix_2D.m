@@ -7,15 +7,13 @@ function [senseMaps, eigenVal] = nullspace_vectors_G_matrix_2D(kCal, N1, N2, G, 
 % Input parameters:
 %   --kCal:         N1_cal x N2_cal x Nc block of calibration data, where
 %                   N1_cal and N2_cal are the dimensions of a rectangular
-%                   block of Nyquist-sampled k-space, and Nc is the number
-%                   of channels in the array.
+%                   block of Nyquist-sampled k-space, and Nc is the number of
+%                   channels in the array.
 %
-%   --N1, N2:       The desired dimensions of the output sensitivity
-%                   matrices.
+%   --N1, N2:       The desired dimensions of the output sensitivity matrices.
 %
-%   --G:            N1_g x N2_g x Nc x Nc array where G[i,j,:,:]
-%                   corresponds to the G matrix at the (i,j) spatial
-%                   location.
+%   --G:            N1_g x N2_g x Nc x Nc array where G(i,j,:,:) 
+%                   corresponds to the G matrix at the (i,j) spatial location.
 %
 %   --patchSize:    Number of elements in the kernel used to calculate the
 %                   nullspace vectors of the C matrix.
@@ -23,6 +21,45 @@ function [senseMaps, eigenVal] = nullspace_vectors_G_matrix_2D(kCal, N1, N2, G, 
 %   --PowerIteration_G_nullspace_vectors: Binary variable. 0 = nullspace
 %                   vectors of the G matrices are calculated using SVD.
 %                   1 = nullspace vectors of the G matrices are calculated
+%                   using the Power Iteration approach. Default: 1.
+%
+%   --M:            Number of iterations used in the Power Iteration approach
+%                   to calculate the nullspace vectors of the G matrices.
+%                   Default: 30.
+%
+%   --PowerIteration_flag_convergence: Binary variable. 1 = convergence error
+%                   is displayed for Power Iteration if the method has not
+%                   converged for some voxels after the iterations indicated
+%                   by the user. Default: 1.
+%
+%   --PowerIteration_flag_auto: Binary variable. 1 = Power Iteration is run
+%                   until convergence in case the number of iterations
+%                   indicated by the user is too small. Default: 0.
+%
+%   --FFT_interpolation: Binary variable. 0 = no interpolation is used,
+%                   1 = FFT-based interpolation is used. Default: 1.
+%
+%   --gauss_win_param: Parameter for the Gaussian apodizing window used to
+%                   generate the low-resolution image in the FFT-based
+%                   interpolation approach. This is the reciprocal of the
+%                   standard deviation of the Gaussian window. Default: 100.
+%
+%   --verbose:      Binary variable. 1 = information about the convergence
+%                   of Power Iteration is displayed. Default: 1.
+%
+% Output parameters:
+%   --senseMaps:    N1 x N2 x Nc stack corresponding to the sensitivity
+%                   maps for each channel present in the calibration data.
+%
+%   --eigenVal:     N1 x N2 x Nc array containing the eigenvalues of G(x)
+%                   for each spatial location (normalized). Can be used for
+%                   creating a mask describing the image support (e.g.,
+%                   mask = (eigenVal(:,:,end) < 0.08);). If
+%                   PowerIteration_G_nullspace_vectors == 1, only the
+%                   smallest eigenvalue is returned (dimensions: N1 x N2).
+%                   If FFT_interpolation == 1, approximations of eigenvalues
+%                   are returned.
+
 p = inputParser;
 
 p.addRequired('kCal', @(x) isnumeric(x) && ndims(x) == 3);
