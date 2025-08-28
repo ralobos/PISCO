@@ -27,7 +27,7 @@ The main differences with previous versions are:
 
 ## Contents
 
-- **Main Function**: `PISCO_sensitivity_maps_estimation.m` - Contains all the PISCO 
+- **Main Function**: `PISCO_sensitivity_map_estimation.m` - Contains all the PISCO 
   computational methods
 - **Example Files**: `example_2D.m` and `example_3D.m` - Demonstration 
   scripts for 2D and 3D data processing
