@@ -337,7 +337,7 @@ function [senseMaps, eigenValues] = PISCO_sensitivity_map_estimation(kCal, dim_s
         senseMaps = senseMaps ./ den;
     else
         % Phase-reference all coils to the first coil 
-        phase_ref = exp(-1i * angle(senseMaps(:, :, 1)));
+        phase_ref = exp(-1i * angle(senseMaps(:, :, :, 1)));
         senseMaps = senseMaps .* phase_ref;
 
         % Normalize sensitivities to unit L2 norm across coils at each pixel
